@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurera Ny Golvvärmetermostat",
+        "description": "Konfigurera den nya Golvvärmetermostaten. Detta kommer att skapa en ny termostatentitet. Ange ett unikt namn.",
+        "data": {
+          "name": "Termostatens Namn (Unikt)",
+          "temp_sensor_entity_id": "Nuvarande Temperatursensorentitet",
+          "heater_switch_entity_id": "Värmare På/Av Styrentitet (switch)",
+          "hysteresis": "Hysteres (grader)",
+          "target_temp": "Initial Måltemperatur (grader)",
+          "master_enabled": "Aktivera Termostaten Initialt (Huvud På/Av)"
+        },
+        "data_description": {
+            "name": "Detta namn kommer att användas för att identifiera denna termostatinstans och måste vara unikt."
+        }
+      }
+    },
+    "error": {
+      "name_empty": "Namnet får inte vara tomt.",
+      "entity_not_found": "En eller flera entiteter kunde inte hittas."
+    },
+    "abort": {
+      "already_configured": "En termostat med detta namn (eller ett liknande unikt ID) är redan konfigurerad."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "{component_name} Alternativ",
+        "description": "Justera inställningarna för denna Golvvärmetermostat.",
+        "data": {
+          "temp_sensor_entity_id": "Nuvarande Temperatursensorentitet",
+          "heater_switch_entity_id": "Värmare På/Av Styrentitet (switch)",
+          "hysteresis": "Hysteres (grader)",
+          "master_enabled": "Aktivera Termostaten (Huvud På/Av)"
+        }
+      }
+    },
+    "error": {
+        "entity_not_found": "En eller flera entiteter kunde inte hittas."
+    }
+  },
+  "entity": {
+    "climate": {
+      "varmegolv_kontroll_default": {
+        "name": "Golvv\u00e4rmetermostat" 
+      }
+    }
+  }
+}

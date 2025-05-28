@@ -1,0 +1,27 @@
+{
+  "domain": "varmegolv_kontroll",
+  "name": "Golvv\u00e4rmekontroll",
+  "version": "2.2.2",
+  "documentation": "https://github.com/ditt_anvandarnamn/varmegolv_kontroll",
+  "issue_tracker": "https://github.com/ditt_anvandarnamn/varmegolv_kontroll/issues",
+  "codeowners": ["@ditt_anvandarnamn"],
+  "requirements": [],
+  "iot_class": "local_push",
+  "config_flow": true,
+  "loggers": ["custom_components.varmegolv_kontroll"],
+  "dependencies": ["climate"],
+  "version_history": {
+    "1.0.0": {"date": "2025-05-23", "description": "Initialversion."},
+    "2.0.0": {"date": "2025-05-23", "description": "Komponenten agerar som egen termostat."},
+    "2.1.0": {"date": "2025-05-23", "description": "Flera instanser med unika namn."},
+    "2.1.1": {"date": "2025-05-23", "description": "Förbättrad loggning/tillståndshantering."},
+    "2.1.2": {"date": "2025-05-23", "description": "Förhindrar onödig global omladdning."},
+    "2.1.3": {"date": "2025-05-23", "description": "Utökad loggning för kraschfelsökning."},
+    "2.1.4": {"date": "2025-05-23", "description": "Test: Switch-anrop blocking=True."},
+    "2.1.5": {"date": "2025-05-23", "description": "Test: Switch-anrop bortkommenterat."},
+    "2.1.6": {"date": "2025-05-23", "description": "Test: Switch-anrop blocking=True (förnyat försök)."},
+    "2.2.0": {"date": "2025-05-23", "description": "Omarbetat switch-anrop: Använder async_add_executor_job, kontrollerar switch-läge."},
+    "2.2.1": {"date": "2025-05-23", "description": "Explicit _attr_name = None i climate.py för tydlighet i namngivning."},
+    "2.2.2": {"date": "2025-05-24", "description": "Fix: Korrigerat TypeError vid uppstart (await på synkron funktion)."}
+  }
+}
