@@ -2,7 +2,7 @@
 
 Detta är en anpassad komponent (custom component) för Home Assistant som tillhandahåller en termostatfunktion för att styra elektrisk golvvärme eller liknande värmesystem. Den använder en angiven temperatursensor och en switch-entitet för att reglera värmen.
 
-**Aktuell version:** `2.3.6` (2025-05-28)
+**Aktuell version:** `2.3.7` (2025-05-28)
 
 ## Funktioner
 
@@ -39,6 +39,9 @@ När komponenten är konfigurerad kommer en ny `climate`-entitet att finnas till
 Bidrag i form av felrapporter (issues) eller pull requests är välkomna på [GitHub-repot](https://github.com/AlleHj/home-assistant-varmegolv_kontroll).
 
 ## Ändringslogg
+
+### Version 2.3.7 (2025-05-28)
+* **FIX:** Tog bort explicit tilldelning av `self.config_entry` i `VarmegolvOptionsFlowHandler.__init__` (`config_flow.py`) för att följa Home Assistants uppdaterade praxis och åtgärda en utfasningsvarning. `self.config_entry` tillhandahålls nu direkt av basklassen `OptionsFlow`.
 
 ### Version 2.3.6 (2025-05-28)
 * **FIX:** Lade till en ny rad i slutet av `climate.py`.

@@ -1,18 +1,18 @@
 """Config flow för Golvvärmekontroll.
 
-2025-05-28 2.3.3
+2025-05-28 2.3.7
 """
 
 import logging
 
-import voluptuous as vol  # Sorterad import
+import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import callback  # Sorterad import
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.template import slugify
 
-from .const import (  # Sorterad import
+from .const import (
     CONF_DEBUG_LOGGING,
     CONF_HEATER_SWITCH_ENTITY,
     CONF_HYSTERESIS,
@@ -37,13 +37,13 @@ HELP_URL = (
 class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Hanterar konfigurationsflödet för Golvvärmekontroll."""
 
-    VERSION = 2  # Behålls då datastrukturen för config_entry.data är stabil
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict | None = None
-    ) -> config_entries.ConfigFlowResult:  # UP007
+    ) -> config_entries.ConfigFlowResult:
         """Hanterar det initiala användarsteget."""
-        errors: dict[str, str] = {}  # UP006 dict
+        errors: dict[str, str] = {}
         if user_input is not None:
             name = user_input[CONF_NAME].strip()
             if not name:
@@ -83,7 +83,7 @@ class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "component_name": "Golvvärmekontroll",
-                "help_url_text": f"För detaljerad information om konfigurationen, se [hjälpguiden]({HELP_URL}).",  # G004, men detta är inte en logger
+                "help_url_text": f"För detaljerad information om konfigurationen, se [hjälpguiden]({HELP_URL}).",
             },
         )
 
@@ -91,7 +91,7 @@ class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
-    ) -> "VarmegolvOptionsFlowHandler":  # Forward reference
+    ) -> "VarmegolvOptionsFlowHandler":
         """Hämta options-flödeshanteraren."""
         return VarmegolvOptionsFlowHandler(config_entry)
 
@@ -101,15 +101,21 @@ class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialisera options-flödeshanteraren."""
-        self.config_entry = config_entry
-        self.current_config = {**config_entry.data, **config_entry.options}
+        # Raden nedan är borttagen då self.config_entry tillhandahålls av basklassen:
+        # self.config_entry = config_entry
+        # current_config sätts nu i async_step_init istället, eller så används self.config_entry direkt.
+        # För att behålla current_config som en sammanslagning kan vi göra det i varje steg
+        # eller förlita oss på att self.config_entry.options och self.config_entry.data används.
+        # Vi kommer att använda self.config_entry direkt i async_step_init.
 
     async def async_step_init(
-        self,
-        user_input: dict | None = None,  # UP007
+        self, user_input: dict | None = None
     ) -> config_entries.ConfigFlowResult:
         """Hanterar initialiseringen av options-flödet."""
-        errors: dict[str, str] = {}  # UP006
+        errors: dict[str, str] = {}
+        # Använd self.config_entry (från basklassen) för att hämta aktuell konfiguration
+        current_config = {**self.config_entry.data, **self.config_entry.options}
+
         if user_input is not None:
             options_data_to_save = {
                 CONF_TEMP_SENSOR_ENTITY: user_input.get(CONF_TEMP_SENSOR_ENTITY),
@@ -120,18 +126,16 @@ class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
             }
             _LOGGER.debug(
                 "[%s] Sparar options: %s",
-                self.config_entry.title,
+                self.config_entry.title,  # self.config_entry är tillgänglig
                 options_data_to_save,
-            )  # G004
+            )
             return self.async_create_entry(title="", data=options_data_to_save)
 
-        temp_sensor = self.current_config.get(CONF_TEMP_SENSOR_ENTITY)
-        heater_switch = self.current_config.get(CONF_HEATER_SWITCH_ENTITY)
-        hysteresis = self.current_config.get(CONF_HYSTERESIS, DEFAULT_HYSTERESIS)
-        master_enabled = self.current_config.get(CONF_MASTER_ENABLED, True)
-        debug_logging = self.current_config.get(
-            CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING
-        )
+        temp_sensor = current_config.get(CONF_TEMP_SENSOR_ENTITY)
+        heater_switch = current_config.get(CONF_HEATER_SWITCH_ENTITY)
+        hysteresis = current_config.get(CONF_HYSTERESIS, DEFAULT_HYSTERESIS)
+        master_enabled = current_config.get(CONF_MASTER_ENABLED, True)
+        debug_logging = current_config.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING)
 
         options_schema = vol.Schema(
             {
@@ -156,7 +160,7 @@ class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=options_schema,
             errors=errors,
             description_placeholders={
-                "component_name": self.config_entry.title,
-                "help_url_text": f"För detaljerad information om dessa alternativ, se [hjälpguiden]({HELP_URL}).",  # G004, men detta är inte en logger
+                "component_name": self.config_entry.title,  # self.config_entry är tillgänglig
+                "help_url_text": f"För detaljerad information om dessa alternativ, se [hjälpguiden]({HELP_URL}).",
             },
         )
