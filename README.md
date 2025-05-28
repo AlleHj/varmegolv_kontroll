@@ -2,7 +2,7 @@
 
 Detta är en anpassad komponent (custom component) för Home Assistant som tillhandahåller en termostatfunktion för att styra elektrisk golvvärme eller liknande värmesystem. Den använder en angiven temperatursensor och en switch-entitet för att reglera värmen.
 
-**Aktuell version:** `2.3.5` (2025-05-28)
+**Aktuell version:** `2.3.6` (2025-05-28)
 
 ## Funktioner
 
@@ -39,6 +39,14 @@ När komponenten är konfigurerad kommer en ny `climate`-entitet att finnas till
 Bidrag i form av felrapporter (issues) eller pull requests är välkomna på [GitHub-repot](https://github.com/AlleHj/home-assistant-varmegolv_kontroll).
 
 ## Ändringslogg
+
+### Version 2.3.6 (2025-05-28)
+* **FIX:** Lade till en ny rad i slutet av `climate.py`.
+* **FIX:** Tog bort onödiga `pass`-satser från stub-metoder i `climate.py` (Ruff PIE790).
+* **FIX:** Argumentet `event` i `_async_home_assistant_started` (`climate.py`) markerat som oanvänt (`_event`) för att åtgärda Pylint W0613.
+* **FIX:** Ändrat `_LOGGER.error("...", exc_info=True)` till `_LOGGER.exception("...")` i `climate.py` (Ruff G201).
+* **FIX:** Formaterat om långa rader i `climate.py` för att följa längdbegränsningar (Pylint C0301).
+* **FIX:** Refaktorerat `else: if` till `elif` i `_control_heating` i `climate.py` (redan gjort i 2.3.5, men bekräftat).
 
 ### Version 2.3.5 (2025-05-28)
 * **FIX:** Lade till en ny rad i slutet av `climate.py` för att åtgärda "No newline at end of file".

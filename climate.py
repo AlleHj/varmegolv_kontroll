@@ -1,11 +1,11 @@
 """Climate-plattform för Golvvärmekontroll.
 
-2025-05-28 2.3.5
+2025-05-28 2.3.6
 """
 
 import logging
 from collections.abc import Callable
-from typing import Any  # Importerad för **kwargs och returtyper
+from typing import Any
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -70,7 +70,6 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
     )
-    # Egenskaper för funktioner som inte stöds sätts till None
     _attr_fan_mode: str | None = None
     _attr_fan_modes: list[str] | None = None
     _attr_preset_mode: str | None = None
@@ -190,7 +189,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                     self._attr_hvac_mode = HVACMode(restored_hvac_mode_str)
                 except ValueError:
                     _LOGGER.warning(
-                        "[%s] Ogiltigt HVAC-läge '%s' återställt, använder från config (options/data).",
+                        "[%s] Ogiltigt HVAC-läge '%s' återställt, "
+                        "använder från config (options/data).",
                         self._config_entry.title,
                         restored_hvac_mode_str,
                     )
@@ -202,7 +202,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             else:
                 if self._debug_logging_enabled:
                     _LOGGER.debug(
-                        "[%s] Inget HVAC-läge i last_state, använder från config (options/data).",
+                        "[%s] Inget HVAC-läge i last_state, "
+                        "använder från config (options/data).",
                         self._config_entry.title,
                     )
                 self._attr_hvac_mode = (
@@ -213,7 +214,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         else:
             if self._debug_logging_enabled:
                 _LOGGER.debug(
-                    "[%s] Inget last_state, använder initiala konfigurationsvärden (data/options).",
+                    "[%s] Inget last_state, "
+                    "använder initiala konfigurationsvärden (data/options).",
                     self._config_entry.title,
                 )
             self._target_temp = initial_target_temp_from_data
@@ -316,7 +318,9 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                     self._heater_switch_entity_id,
                 )
 
-    async def _async_home_assistant_started(self, event: Event) -> None:
+    async def _async_home_assistant_started(
+        self, _event: Event
+    ) -> None:  # Argument _event markerat som oanvänt
         """Körs när Home Assistant har startat fullt ut."""
         if self._debug_logging_enabled:
             _LOGGER.debug(
@@ -329,13 +333,15 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                     self._listeners.remove(self._event_start_listener_unsub_handle)
                     if self._debug_logging_enabled:
                         _LOGGER.debug(
-                            "[%s] Tog bort EVENT_HOMEASSISTANT_START lyssnar-handle från self._listeners.",
+                            "[%s] Tog bort EVENT_HOMEASSISTANT_START "
+                            "lyssnar-handle från self._listeners.",
                             self._config_entry.title,
                         )
                 except ValueError:
                     if self._debug_logging_enabled:
                         _LOGGER.debug(
-                            "[%s] EVENT_HOMEASSISTANT_START lyssnar-handle hittades ej i self._listeners vid borttagning.",
+                            "[%s] EVENT_HOMEASSISTANT_START lyssnar-handle "
+                            "hittades ej i self._listeners vid borttagning.",
                             self._config_entry.title,
                         )
             self._event_start_listener_unsub_handle = None
@@ -363,11 +369,9 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         for unsub in self._listeners:
             try:
                 unsub()
-            except Exception as e:
-                _LOGGER.warning(
-                    "[%s] Fel vid avregistrering av lyssnare: %s",
-                    self._config_entry.title,
-                    e,
+            except Exception:  # Behåller bred Exception här för robusthet
+                _LOGGER.exception(
+                    "[%s] Fel vid avregistrering av lyssnare.", self._config_entry.title
                 )
         self._listeners.clear()
         if self._debug_logging_enabled:
@@ -379,16 +383,16 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         if self._event_start_listener_unsub_handle is not None:
             if self._debug_logging_enabled:
                 _LOGGER.debug(
-                    "[%s] Försöker explicit avregistrera _event_start_listener_unsub_handle om den finns kvar.",
+                    "[%s] Försöker explicit avregistrera "
+                    "_event_start_listener_unsub_handle om den finns kvar.",
                     self._config_entry.title,
                 )
             try:
                 self._event_start_listener_unsub_handle()
-            except Exception as e:
-                _LOGGER.warning(
-                    "[%s] Fel vid explicit avregistrering av _event_start_listener_unsub_handle: %s",
+            except Exception:  # Behåller bred Exception här
+                _LOGGER.exception(
+                    "[%s] Fel vid explicit avregistrering av _event_start_listener_unsub_handle.",
                     self._config_entry.title,
-                    e,
                 )
             self._event_start_listener_unsub_handle = None
 
@@ -457,7 +461,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             )
             if self._attr_hvac_mode != target_hvac_mode:
                 _LOGGER.info(
-                    "[%s] HVAC-läge uppdaterat till %s via options-ändring (master_enabled).",
+                    "[%s] HVAC-läge uppdaterat till %s "
+                    "via options-ändring (master_enabled).",
                     self._config_entry.title,
                     target_hvac_mode,
                 )
@@ -564,7 +569,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         ):
             if self._debug_logging_enabled:
                 _LOGGER.debug(
-                    "[%s] Värmeswitch '%s' attribut ändrades, men tillstånd ('%s') oförändrat. Ignorerar.",
+                    "[%s] Värmeswitch '%s' attribut ändrades, "
+                    "men tillstånd ('%s') oförändrat. Ignorerar.",
                     self._config_entry.title,
                     self._heater_switch_entity_id,
                     switch_state_new,
@@ -573,7 +579,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
 
         if self._debug_logging_enabled:
             _LOGGER.debug(
-                "[%s] Värmeswitch '%s' ändrades från '%s' till '%s'. Schemalägger HA-statusuppdatering.",
+                "[%s] Värmeswitch '%s' ändrades från '%s' till '%s'. "
+                "Schemalägger HA-statusuppdatering.",
                 self._config_entry.title,
                 self._heater_switch_entity_id,
                 switch_state_old,
@@ -583,15 +590,15 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             self.async_schedule_update_ha_state()
             if self._debug_logging_enabled:
                 _LOGGER.debug(
-                    "[%s] async_schedule_update_ha_state ANROPAD från _async_heater_switch_changed.",
+                    "[%s] async_schedule_update_ha_state ANROPAD "
+                    "från _async_heater_switch_changed.",
                     self._config_entry.title,
                 )
-        except Exception as e:
-            _LOGGER.error(
-                "[%s] FEL vid anrop av async_schedule_update_ha_state i _async_heater_switch_changed: %s",
+        except Exception:
+            _LOGGER.exception(
+                "[%s] FEL vid anrop av async_schedule_update_ha_state "
+                "i _async_heater_switch_changed.",
                 self._config_entry.title,
-                e,
-                exc_info=True,
             )
 
     async def _control_heating(self) -> None:
@@ -654,6 +661,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 "PÅ" if is_heater_on else "AV",
             )
 
+        # Förutsätter att self._target_temp och self._current_temp inte är None här
+        # baserat på tidigare kontroller.
         lower_bound = self._target_temp - (self._hysteresis / 2)
         upper_bound = self._target_temp + (self._hysteresis / 2)
         desired_action_turn_on: bool | None = None
@@ -668,10 +677,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                         upper_bound,
                     )
                 desired_action_turn_on = False
-        # Ändrad från "else: if" till "elif"
-        elif (
-            self._current_temp <= lower_bound
-        ):  # Gäller endast om is_heater_on är False
+        elif self._current_temp <= lower_bound:  # Använder elif här
             if self._debug_logging_enabled:
                 _LOGGER.debug(
                     "[%s] Temp %.1f°C <= nedre gräns %.1f°C. Önskar slå PÅ.",
@@ -683,7 +689,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
 
         if desired_action_turn_on is True:
             _LOGGER.info(
-                "[%s] Värmaren är AV, men temperaturen (%.1f°C) är under eller lika med nedre gräns (%.1f°C). Slår PÅ värmaren.",
+                "[%s] Värmaren är AV, men temperaturen (%.1f°C) är under eller lika "
+                "med nedre gräns (%.1f°C). Slår PÅ värmaren.",
                 self._config_entry.title,
                 self._current_temp,
                 lower_bound,
@@ -691,22 +698,23 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             await self._set_heater_state(True)
         elif desired_action_turn_on is False:
             _LOGGER.info(
-                "[%s] Värmaren är PÅ, men temperaturen (%.1f°C) är över eller lika med övre gräns (%.1f°C). Stänger AV värmaren.",
+                "[%s] Värmaren är PÅ, men temperaturen (%.1f°C) är över eller lika "
+                "med övre gräns (%.1f°C). Stänger AV värmaren.",
                 self._config_entry.title,
                 self._current_temp,
                 upper_bound,
             )
             await self._set_heater_state(False)
-        else:
-            if self._debug_logging_enabled:
-                _LOGGER.debug(
-                    "[%s] Värmarens nuvarande tillstånd ('%s') matchar önskat tillstånd baserat på temp (%.1f°C) vs gränser (%.1f°C-%.1f°C). Ingen åtgärd.",
-                    self._config_entry.title,
-                    "PÅ" if is_heater_on else "AV",
-                    self._current_temp or -99.9,
-                    lower_bound,
-                    upper_bound,
-                )
+        elif self._debug_logging_enabled:
+            _LOGGER.debug(
+                "[%s] Värmarens nuvarande tillstånd ('%s') matchar önskat tillstånd "
+                "baserat på temp (%.1f°C) vs gränser (%.1f°C-%.1f°C). Ingen åtgärd.",
+                self._config_entry.title,
+                "PÅ" if is_heater_on else "AV",
+                self._current_temp or -99.9,
+                lower_bound,
+                upper_bound,
+            )
 
     async def _set_heater_state(self, turn_on: bool) -> None:
         """Sätter värmeelementets tillstånd (på/av)."""
@@ -727,7 +735,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         ):
             if self._debug_logging_enabled:
                 _LOGGER.debug(
-                    "[%s] Värmare '%s' är redan i önskat läge ('%s'). Inget serviceanrop görs.",
+                    "[%s] Värmare '%s' är redan i önskat läge ('%s'). "
+                    "Inget serviceanrop görs.",
                     self._config_entry.title,
                     entity_id_to_call,
                     current_state.state,
@@ -755,14 +764,12 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                     service_to_call,
                     entity_id_to_call,
                 )
-        except Exception as e:
-            _LOGGER.error(
-                "[%s] FEL vid anrop till switch.%s för '%s': %s",
+        except Exception:
+            _LOGGER.exception(
+                "[%s] FEL vid anrop till switch.%s för '%s'.",
                 self._config_entry.title,
                 service_to_call,
                 entity_id_to_call,
-                e,
-                exc_info=True,
             )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
@@ -869,22 +876,16 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             _LOGGER.debug("[%s] async_turn_off anropad.", self._config_entry.title)
         await self.async_set_hvac_mode(HVACMode.OFF)
 
-    # Stub-metoder för icke-stödda abstrakta funktioner för att tysta Pylint W0223
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Denna funktion (set_fan_mode) stöds inte."""
-        pass
 
     async def async_set_humidity(self, humidity: int) -> None:
         """Denna funktion (set_humidity) stöds inte."""
-        pass
 
-    async def async_set_preset_mode(self, preset_mode: str) -> None:
+    async def async_set_preset_mode(
+        self, preset_mode: str | None
+    ) -> None:  # Lade till | None för att matcha basklass
         """Denna funktion (set_preset_mode) stöds inte."""
-        pass
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Denna funktion (set_swing_mode) stöds inte."""
-        pass
-
-
-# Lägg till en ny rad i slutet av filen
