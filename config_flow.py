@@ -27,8 +27,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# URL till hjälpfilen på GitHub
-HELP_URL = "https://github.com/AlleHj/home-assistant-varmegolv_kontroll/blob/master/custom_components/varmegolv_kontroll/HELP_sv.md"
+# URL till hjälpfilen på GitHub (ska ligga i roten av repot)
+HELP_URL = "https://github.com/AlleHj/home-assistant-varmegolv_kontroll/blob/master/HELP_sv.md"
 
 class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 2

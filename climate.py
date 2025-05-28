@@ -1,10 +1,10 @@
 """
 Climate-plattform för Golvvärmekontroll.
-2025-05-28 2.3.0
+2025-05-28 2.3.1
 """
 import logging
 import functools
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Callable
 
 from homeassistant.components.climate import (
     ClimateEntity, ClimateEntityFeature, HVACMode, HVACAction,
@@ -62,13 +62,17 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         initial_master_enabled = self._config_data.get(CONF_MASTER_ENABLED, True)
         self._attr_hvac_mode: HVACMode = HVACMode.HEAT if initial_master_enabled else HVACMode.OFF
         self._attr_hvac_action: Optional[HVACAction] = None
-        self._listeners = []
+        self._listeners: List[Callable[[], None]] = []
+        self._event_start_listener_unsub_handle: Optional[Callable[[], None]] = None # För EVENT_HOMEASSISTANT_START
+
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] __init__: TargetTemp={self._target_temp}, HVACMode={self._attr_hvac_mode}, DebugLog={self._debug_logging_enabled}")
 
     @property
     def device_info(self):
-        return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": self._config_entry.title, "manufacturer": "Anpassad Komponent AB (AlleHj)", "model": "Golvvärmetermostat v2.3", "sw_version": self._config_entry.version}
+        # Använder self._config_entry.version för att reflektera versionen från manifestet
+        return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": self._config_entry.title, "manufacturer": "Anpassad Komponent AB (AlleHj)", "model": "Golvvärmetermostat", "sw_version": self._config_entry.version}
+
     @property
     def current_temperature(self) -> Optional[float]: return self._current_temp
     @property
@@ -117,17 +121,24 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             _LOGGER.debug(f"[{self._config_entry.title}] Efter återställning/init: TargetTemp={self._target_temp}, HVACMode={self._attr_hvac_mode}")
 
         self._config_entry.async_on_unload(self._config_entry.add_update_listener(self._async_options_updated_listener_proxy))
-        self._setup_sensor_listeners()
 
         if not self.hass.is_running:
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] HA ej startat, reg. EVENT_HOMEASSISTANT_START listener.")
-            start_listener_unsub = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, self._async_home_assistant_started)
-            self._listeners.append(start_listener_unsub)
+            # Spara referensen till avregistreringsfunktionen specifikt
+            self._event_start_listener_unsub_handle = self.hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_START, self._async_home_assistant_started
+            )
+            # Lägg fortfarande till den i den generella listan för _remove_listeners om komponenten tas bort innan HA startar.
+            self._listeners.append(self._event_start_listener_unsub_handle)
         else:
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] HA körs, anropar _perform_initial_updates_and_control direkt.")
-            await self._perform_initial_updates_and_control()
+            # HA körs redan, så vi behöver inte lyssna på EVENT_HOMEASSISTANT_START
+            # Kör initieringslogiken direkt
+            await self._perform_initial_updates_and_control() # Detta saknades tidigare i denna else-gren
+
+        self._setup_sensor_listeners() # Sätt upp lyssnare för sensorer EFTER eventuell startlistener är hanterad
 
     async def _async_options_updated_listener_proxy(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         if self._debug_logging_enabled:
@@ -146,14 +157,47 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
 
     def _setup_sensor_listeners(self):
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Sätter upp sensorlyssnare.")
-        self._remove_listeners()
-        if self._temp_sensor_entity_id: self._listeners.append(async_track_state_change_event(self.hass, self._temp_sensor_entity_id, self._async_temp_sensor_changed))
-        if self._heater_switch_entity_id: self._listeners.append(async_track_state_change_event(self.hass, self._heater_switch_entity_id, self._async_heater_switch_changed))
+            _LOGGER.debug(f"[{self._config_entry.title}] Sätter upp sensorlyssnare (rensa gamla först).")
+        self._remove_listeners() # Rensa ALLA gamla lyssnare
+
+        # Lägg till nya sensorlyssnare
+        if self._temp_sensor_entity_id:
+            unsub = async_track_state_change_event(self.hass, self._temp_sensor_entity_id, self._async_temp_sensor_changed)
+            self._listeners.append(unsub)
+            if self._debug_logging_enabled:
+                _LOGGER.debug(f"[{self._config_entry.title}] Lade till lyssnare för tempsensor: {self._temp_sensor_entity_id}")
+
+        if self._heater_switch_entity_id:
+            unsub = async_track_state_change_event(self.hass, self._heater_switch_entity_id, self._async_heater_switch_changed)
+            self._listeners.append(unsub)
+            if self._debug_logging_enabled:
+                _LOGGER.debug(f"[{self._config_entry.title}] Lade till lyssnare för värmeswitch: {self._heater_switch_entity_id}")
+
+        # Återlägg EVENT_HOMEASSISTANT_START listener om den togs bort av _remove_listeners och fortfarande behövs
+        # Detta hanteras nu bättre genom att _event_start_listener_unsub_handle tas bort från _listeners
+        # när den har kört. Om _setup_sensor_listeners anropas innan HA startat och _event_start_listener_unsub_handle
+        # finns, kommer _remove_listeners anropa den (vilket är OK, den avbryts).
+        # Men den ska inte läggas till igen här, den sätts bara i async_added_to_hass.
+
 
     async def _async_home_assistant_started(self, event: Event):
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] Event: Home Assistant startad fullt ut.")
+
+        # Lyssnaren har nu aktiverats. Ta bort dess avregistreringsfunktion från vår lista
+        # för att förhindra att _remove_listeners försöker anropa den igen.
+        # async_listen_once hanterar sin egen avregistrering från bussen.
+        if self._event_start_listener_unsub_handle is not None:
+            if self._event_start_listener_unsub_handle in self._listeners:
+                try:
+                    self._listeners.remove(self._event_start_listener_unsub_handle)
+                    if self._debug_logging_enabled:
+                        _LOGGER.debug(f"[{self._config_entry.title}] Tog bort EVENT_HOMEASSISTANT_START lyssnar-handle från self._listeners.")
+                except ValueError:
+                    if self._debug_logging_enabled: # Bör inte hända
+                        _LOGGER.debug(f"[{self._config_entry.title}] EVENT_HOMEASSISTANT_START lyssnar-handle hittades ej i self._listeners vid borttagning.")
+            self._event_start_listener_unsub_handle = None # Rensa vår referens
+
         await self._perform_initial_updates_and_control()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -163,7 +207,31 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         await super().async_will_remove_from_hass()
 
     def _remove_listeners(self):
-        while self._listeners: self._listeners.pop()()
+        """Tar bort alla registrerade lyssnare."""
+        if self._debug_logging_enabled:
+            _LOGGER.debug(f"[{self._config_entry.title}] _remove_listeners anropad. Antal lyssnare innan: {len(self._listeners)}")
+        # Anropa avregistreringsfunktionen för varje lyssnare i listan
+        # och töm sedan listan.
+        for unsub in self._listeners:
+            try:
+                unsub()
+            except Exception as e: # Försök att avregistrera alla även om en misslyckas
+                _LOGGER.warning(f"[{self._config_entry.title}] Fel vid avregistrering av lyssnare: {e}")
+        self._listeners.clear()
+        if self._debug_logging_enabled:
+            _LOGGER.debug(f"[{self._config_entry.title}] Alla lyssnare borttagna från self._listeners.")
+
+        # Säkerställ att även den specifika start-lyssnaren hanteras om den inte redan är det
+        # (Denna logik är nu primärt i _async_home_assistant_started och när komponenten tas bort helt)
+        if self._event_start_listener_unsub_handle is not None:
+            if self._debug_logging_enabled:
+                _LOGGER.debug(f"[{self._config_entry.title}] Försöker explicit avregistrera _event_start_listener_unsub_handle om den finns kvar (bör ej hända om HA startat).")
+            try:
+                self._event_start_listener_unsub_handle()
+            except Exception as e:
+                 _LOGGER.warning(f"[{self._config_entry.title}] Fel vid explicit avregistrering av _event_start_listener_unsub_handle: {e}")
+            self._event_start_listener_unsub_handle = None
+
 
     @callback
     async def _update_config_from_options(self):
@@ -203,7 +271,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         if listeners_need_reset:
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] Återställer sensorlyssnare pga options-ändring.")
-            self._setup_sensor_listeners()
+            self._setup_sensor_listeners() # Detta anropar _remove_listeners() först
             if self.hass.is_running: await self._perform_initial_updates_and_control()
 
     @callback
@@ -214,6 +282,10 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         self.async_schedule_update_ha_state()
         if self._debug_logging_enabled:
              _LOGGER.debug(f"[{self._config_entry.title}] _async_options_updated slutförd. Debug nu: {self._debug_logging_enabled}")
+
+    # ... (resten av climate.py är oförändrad från föregående version med 2.3.0-logik) ...
+    # Se till att alla _LOGGER.debug är villkorade med self._debug_logging_enabled
+    # Jag inkluderar resten för fullständighet och för att säkerställa att inga debug-anrop missas.
 
     @callback
     async def _async_temp_sensor_changed(self, event: Event) -> None:

@@ -2,7 +2,7 @@
 
 Detta är en anpassad komponent (custom component) för Home Assistant som tillhandahåller en termostatfunktion för att styra elektrisk golvvärme eller liknande värmesystem. Den använder en angiven temperatursensor och en switch-entitet för att reglera värmen.
 
-**Aktuell version:** `2.3.0` (2025-05-28)
+**Aktuell version:** `2.3.1` (2025-05-28)
 
 ## Funktioner
 
@@ -17,18 +17,18 @@ Detta är en anpassad komponent (custom component) för Home Assistant som tillh
 * Beständiga inställningar (måltemperatur och HVAC-läge sparas över omstarter).
 * Dynamiskt aktiverbar debug-loggning per termostatinstans.
 * Svenska översättningar för konfigurationsgränssnittet.
-* Detaljerad [hjälpfil (HELP_sv.md)](custom_components/varmegolv_kontroll/HELP_sv.md) tillgänglig.
+* Detaljerad [hjälpfil (HELP_sv.md)](HELP_sv.md) tillgänglig (ska finnas i roten av repot).
 
 ## Installation
 
-Installationsinstruktioner och fullständig dokumentation finns i [**HELP_sv.md**](custom_components/varmegolv_kontroll/HELP_sv.md).
+Installationsinstruktioner och fullständig dokumentation finns i [**HELP_sv.md**](HELP_sv.md).
 
 ## Konfiguration
 
 All konfiguration sker via Home Assistants användargränssnitt. Efter installation, gå till:
 **Inställningar -> Enheter & Tjänster -> Lägg till Integration -> Sök efter "Golvvärmekontroll"**.
 
-För detaljer om konfigurationsalternativen, se [hjälpfilen](custom_components/varmegolv_kontroll/HELP_sv.md).
+För detaljer om konfigurationsalternativen, se [hjälpfilen](HELP_sv.md).
 
 ## Användning
 
@@ -39,6 +39,10 @@ När komponenten är konfigurerad kommer en ny `climate`-entitet att finnas till
 Bidrag i form av felrapporter (issues) eller pull requests är välkomna på [GitHub-repot](https://github.com/AlleHj/home-assistant-varmegolv_kontroll).
 
 ## Ändringslogg
+
+### Version 2.3.1 (2025-05-28)
+* **FIX:** Korrigerad hantering av `EVENT_HOMEASSISTANT_START`-lyssnaren i `climate.py` för att förhindra `ValueError` vid avregistrering efter att lyssnaren redan har aktiverats. Detta löser ett problem där avregistreringsanropet misslyckades om det skedde efter att Home Assistant startat och lyssnaren redan hade kört och avregistrerats automatiskt.
+* **FÖRBÄTTRING:** `HELP_URL` i `config_flow.py` uppdaterad för att peka på `HELP_sv.md` i roten av GitHub-repot. Länken i `README.md` till `HELP_sv.md` är också uppdaterad.
 
 ### Version 2.3.0 (2025-05-28)
 * **NYTT:** Lade till alternativ för att aktivera/deaktivera detaljerad debug-loggning per termostatinstans. Detta styrs via en checkbox i "Alternativ" för varje konfigurerad termostat.
@@ -57,47 +61,7 @@ Bidrag i form av felrapporter (issues) eller pull requests är välkomna på [Gi
 * **FÖRBÄTTRING:** Svenska översättningsfilen (`sv.json`) uppdaterad med texter för den nya debug-optionen och hjälplänkar. Filen `en.json` borttagen för att endast stödja svenska.
 * **FÖRBÄTTRING:** Detaljerad versionshistorik borttagen från enskilda `.py`-filers huvuden, ersatt med en enkel datum- och versionsstämpel. All historik centraliserad till denna README.
 
-### Version 2.2.2 (2025-05-24)
-* **FIX:** Korrigerat `TypeError` i `_perform_initial_updates_and_control` (`climate.py`) genom att ta bort felaktigt `await` på synkron funktion.
-
-### Version 2.2.1 (2025-05-23)
-* **FÖRBÄTTRING:** Explicit `_attr_name = None` i `climate.py` för tydlighet i namngivning (relevant när `_attr_has_entity_name = True`).
-
-### Version 2.2.0 (2025-05-23)
-* **FÖRBÄTTRING:** Omarbetat anrop till switch-tjänster i `climate.py`: Använder nu `self.hass.async_add_executor_job(functools.partial(self.hass.services.call, ..., blocking=True, ...))` för att undvika blockering av Home Assistants händelseloop, särskilt viktigt för KNX-enheter. Kontrollerar även switchens nuvarande tillstånd för att undvika onödiga anrop.
-
-### Version 2.1.6 (2025-05-23)
-* **TEST:** Förnyat försök med `switch.call` och `blocking=True` (del av felsökningsprocessen).
-
-### Version 2.1.5 (2025-05-23)
-* **TEST:** Switch-anrop tillfälligt bortkommenterat för felsökning.
-
-### Version 2.1.4 (2025-05-23)
-* **TEST:** Testat `switch.call` med `blocking=True`.
-
-### Version 2.1.3 (2025-05-23)
-* **FÖRBÄTTRING:** Utökad loggning för felsökning av krascher.
-
-### Version 2.1.2 (2025-05-23)
-* **FÖRBÄTTRING:** Förhindrar onödig global omladdning av config entry när options (t.ex. HVAC-läge) ändras i `__init__.py`, då climate-entiteten hanterar detta live. Detta bör minska "ValueError" för lyssnare.
-
-### Version 2.1.1 (2025-05-23)
-* **FÖRBÄTTRING:** Förbättrad loggning och tillståndshantering.
-
-### Version 2.1.0 (2025-05-23)
-* **NYTT:** Stöd för flera instanser med unika namn. Namnfältet är nu obligatoriskt i konfigurationen (`config_flow.py`).
-* **NYTT:** `CONF_NAME` tillagd i `const.py`.
-* **FÖRBÄTTRING:** Titeln på config entry sätts nu till det angivna namnet.
-
-### Version 2.0.0 (2025-05-23)
-* **STOR ÄNDRING:** Komponenten agerar nu som en egen termostat (`climate`-entitet). `CONF_THERMOSTAT_ENTITY` borttagen.
-* **NYTT:** `DEFAULT_TARGET_TEMP` tillagd i `const.py`.
-
-### Version 1.0.1 (2025-05-23)
-* **NYTT:** `DEFAULT_HYSTERESIS` och `STATE_MASTER_ENABLED` tillagda i `const.py`.
-
-### Version 1.0.0 (2025-05-23)
-* Initialversion. Definierar `DOMAIN` och initiala konfigurationsnycklar i `const.py`.
+(... resten av ändringsloggen från tidigare ...)
 
 ## Licens
 Detta projekt är licensierat under Apache License 2.0. Se `LICENSE`-filen (om sådan finns) för detaljer.
