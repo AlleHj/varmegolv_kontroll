@@ -1,149 +1,258 @@
-"""
-Climate-plattform för Golvvärmekontroll.
-2025-05-28 2.3.2
+"""Climate-plattform för Golvvärmekontroll.
+
+2025-05-28 2.3.4
 """
 import logging
-import functools
-from typing import Any, Optional, List, Callable
+from collections.abc import Callable
+from typing import Any # <--- Lade till denna import igen
 
 from homeassistant.components.climate import (
-    ClimateEntity, ClimateEntityFeature, HVACMode, HVACAction,
+    ClimateEntity,
+    ClimateEntityFeature,
+    HVACAction,
+    HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    UnitOfTemperature, ATTR_TEMPERATURE, STATE_UNAVAILABLE, STATE_UNKNOWN,
+    ATTR_TEMPERATURE,
     EVENT_HOMEASSISTANT_START,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
 )
-from homeassistant.core import HomeAssistant, callback, Event, State
+from homeassistant.core import Event, HomeAssistant, State, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
-    DOMAIN, CONF_TEMP_SENSOR_ENTITY, CONF_HEATER_SWITCH_ENTITY, CONF_HYSTERESIS,
-    CONF_MASTER_ENABLED, CONF_TARGET_TEMP, CONF_DEBUG_LOGGING, DEFAULT_HYSTERESIS,
-    DEFAULT_TARGET_TEMP, DEFAULT_DEBUG_LOGGING
+    CONF_DEBUG_LOGGING,
+    CONF_HEATER_SWITCH_ENTITY,
+    CONF_HYSTERESIS,
+    CONF_MASTER_ENABLED,
+    CONF_TARGET_TEMP,
+    CONF_TEMP_SENSOR_ENTITY,
+    DEFAULT_DEBUG_LOGGING,
+    DEFAULT_HYSTERESIS,
+    DEFAULT_TARGET_TEMP,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup_entry(
-    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    # Denna INFO-logg är för uppsättning på modulnivå, behålls som INFO.
-    _LOGGER.info(f"Sätter upp climate-entitet för '{config_entry.title}' ({config_entry.entry_id}) v{config_entry.version}")
+    """Sätt upp climate-entiteten från en config entry."""
+    _LOGGER.info(
+        "Sätter upp climate-entitet för '%s' (%s) v%s",
+        config_entry.title,
+        config_entry.entry_id,
+        config_entry.version,
+    )
     initial_config_data = {**config_entry.data, **config_entry.options}
     controller = VarmegolvClimate(hass, config_entry, initial_config_data)
     async_add_entities([controller], True)
 
+
 class VarmegolvClimate(ClimateEntity, RestoreEntity):
+    """Representerar en Golvvärmekontroll termostat."""
+
     _attr_has_entity_name = True
     _attr_name = None
 
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE |
-        ClimateEntityFeature.TURN_ON |
-        ClimateEntityFeature.TURN_OFF
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
     )
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, config_data: dict) -> None:
+        """Initialisera termostaten."""
         self.hass = hass
         self._config_entry = config_entry
         self._config_data = dict(config_data)
         self._temp_sensor_entity_id = self._config_data.get(CONF_TEMP_SENSOR_ENTITY)
         self._heater_switch_entity_id = self._config_data.get(CONF_HEATER_SWITCH_ENTITY)
         self._hysteresis = self._config_data.get(CONF_HYSTERESIS, DEFAULT_HYSTERESIS)
-        self._debug_logging_enabled = self._config_data.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING)
+        self._debug_logging_enabled = self._config_data.get(
+            CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING
+        )
 
         self._attr_unique_id = f"{config_entry.entry_id}_thermostat"
         self._attr_temperature_unit = hass.config.units.temperature_unit
-        self._current_temp: Optional[float] = None
-        self._target_temp: float = self._config_data.get(CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP)
+        self._current_temp: float | None = None
+        self._target_temp: float = self._config_data.get(
+            CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP
+        )
         initial_master_enabled = self._config_data.get(CONF_MASTER_ENABLED, True)
-        self._attr_hvac_mode: HVACMode = HVACMode.HEAT if initial_master_enabled else HVACMode.OFF
-        self._attr_hvac_action: Optional[HVACAction] = None
-        self._listeners: List[Callable[[], None]] = []
-        self._event_start_listener_unsub_handle: Optional[Callable[[], None]] = None
+        self._attr_hvac_mode: HVACMode = (
+            HVACMode.HEAT if initial_master_enabled else HVACMode.OFF
+        )
+        self._attr_hvac_action: HVACAction | None = None
+        self._listeners: list[Callable[[], None]] = []
+        self._event_start_listener_unsub_handle: Callable[[], None] | None = None
 
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] __init__: TargetTemp={self._target_temp}, HVACMode={self._attr_hvac_mode}, DebugLog={self._debug_logging_enabled}")
+            _LOGGER.debug(
+                "[%s] __init__: TargetTemp=%s, HVACMode=%s, DebugLog=%s",
+                self._config_entry.title,
+                self._target_temp,
+                self._attr_hvac_mode,
+                self._debug_logging_enabled,
+            )
 
     @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": self._config_entry.title, "manufacturer": "Anpassad Komponent AB (AlleHj)", "model": "Golvvärmetermostat", "sw_version": self._config_entry.version}
+    def device_info(self) -> dict[str, Any]: # Lade till Any för dict value type
+        """Returnera enhetsinformation för enheten."""
+        return {
+            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
+            "name": self._config_entry.title,
+            "manufacturer": "Anpassad Komponent AB (AlleHj)",
+            "model": "Golvvärmetermostat",
+            "sw_version": self._config_entry.version,
+        }
 
     @property
-    def current_temperature(self) -> Optional[float]: return self._current_temp
+    def current_temperature(self) -> float | None:
+        """Returnera aktuell temperatur."""
+        return self._current_temp
+
     @property
-    def target_temperature(self) -> Optional[float]: return self._target_temp
+    def target_temperature(self) -> float | None:
+        """Returnera inställd måltemperatur."""
+        return self._target_temp
+
     @property
-    def hvac_mode(self) -> HVACMode: return self._attr_hvac_mode
+    def hvac_mode(self) -> HVACMode:
+        """Returnera aktuellt HVAC-läge."""
+        return self._attr_hvac_mode
+
     @property
-    def hvac_action(self) -> Optional[HVACAction]:
-        if self._attr_hvac_mode == HVACMode.OFF: return HVACAction.OFF
+    def hvac_action(self) -> HVACAction | None:
+        """Returnera aktuell HVAC-åtgärd (heating, idle, off)."""
+        if self._attr_hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
         if self._heater_switch_entity_id:
             heater_state = self.hass.states.get(self._heater_switch_entity_id)
-            if heater_state and heater_state.state == "on": return HVACAction.HEATING
+            if heater_state and heater_state.state == "on":
+                return HVACAction.HEATING
         return HVACAction.IDLE
 
     async def async_added_to_hass(self) -> None:
+        """Körs när entiteten läggs till i Home Assistant."""
         await super().async_added_to_hass()
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_added_to_hass: Startar.")
+            _LOGGER.debug("[%s] async_added_to_hass: Startar.", self._config_entry.title)
 
-        initial_target_temp_from_data = self._config_entry.data.get(CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP)
-        initial_master_enabled_from_data = self._config_entry.data.get(CONF_MASTER_ENABLED, True)
-        initial_master_enabled_from_options = self._config_entry.options.get(CONF_MASTER_ENABLED, initial_master_enabled_from_data)
+        initial_target_temp_from_data = self._config_entry.data.get(
+            CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP
+        )
+        initial_master_enabled_from_data = self._config_entry.data.get(
+            CONF_MASTER_ENABLED, True
+        )
+        initial_master_enabled_from_options = self._config_entry.options.get(
+            CONF_MASTER_ENABLED, initial_master_enabled_from_data
+        )
 
         last_state = await self.async_get_last_state()
         if last_state:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Återställer från last_state: {last_state.attributes}")
-            self._target_temp = float(last_state.attributes.get(ATTR_TEMPERATURE, initial_target_temp_from_data))
+                _LOGGER.debug(
+                    "[%s] Återställer från last_state: %s",
+                    self._config_entry.title,
+                    last_state.attributes,
+                )
+            self._target_temp = float(
+                last_state.attributes.get(ATTR_TEMPERATURE, initial_target_temp_from_data)
+            )
             restored_hvac_mode_str = last_state.attributes.get("hvac_mode")
             if restored_hvac_mode_str:
-                try: self._attr_hvac_mode = HVACMode(restored_hvac_mode_str)
+                try:
+                    self._attr_hvac_mode = HVACMode(restored_hvac_mode_str)
                 except ValueError:
-                    _LOGGER.warning(f"[{self._config_entry.title}] Ogiltigt HVAC-läge '{restored_hvac_mode_str}' återställt, använder från config (options/data).")
-                    self._attr_hvac_mode = HVACMode.HEAT if initial_master_enabled_from_options else HVACMode.OFF
+                    _LOGGER.warning(
+                        "[%s] Ogiltigt HVAC-läge '%s' återställt, använder från config (options/data).",
+                        self._config_entry.title,
+                        restored_hvac_mode_str,
+                    )
+                    self._attr_hvac_mode = (
+                        HVACMode.HEAT
+                        if initial_master_enabled_from_options
+                        else HVACMode.OFF
+                    )
             else:
                 if self._debug_logging_enabled:
-                    _LOGGER.debug(f"[{self._config_entry.title}] Inget HVAC-läge i last_state, använder från config (options/data).")
-                self._attr_hvac_mode = HVACMode.HEAT if initial_master_enabled_from_options else HVACMode.OFF
+                    _LOGGER.debug(
+                        "[%s] Inget HVAC-läge i last_state, använder från config (options/data).",
+                        self._config_entry.title,
+                    )
+                self._attr_hvac_mode = (
+                    HVACMode.HEAT if initial_master_enabled_from_options else HVACMode.OFF
+                )
         else:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Inget last_state, använder initiala konfigurationsvärden (data/options).")
+                _LOGGER.debug(
+                    "[%s] Inget last_state, använder initiala konfigurationsvärden (data/options).",
+                    self._config_entry.title,
+                )
             self._target_temp = initial_target_temp_from_data
-            self._attr_hvac_mode = HVACMode.HEAT if initial_master_enabled_from_options else HVACMode.OFF
+            self._attr_hvac_mode = (
+                HVACMode.HEAT if initial_master_enabled_from_options else HVACMode.OFF
+            )
 
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Efter återställning/init: TargetTemp={self._target_temp}, HVACMode={self._attr_hvac_mode}")
+            _LOGGER.debug(
+                "[%s] Efter återställning/init: TargetTemp=%s, HVACMode=%s",
+                self._config_entry.title,
+                self._target_temp,
+                self._attr_hvac_mode,
+            )
 
-        self._config_entry.async_on_unload(self._config_entry.add_update_listener(self._async_options_updated_listener_proxy))
+        self._config_entry.async_on_unload(
+            self._config_entry.add_update_listener(self._async_options_updated_listener_proxy)
+        )
 
         if not self.hass.is_running:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] HA ej startat, reg. EVENT_HOMEASSISTANT_START listener.")
+                _LOGGER.debug(
+                    "[%s] HA ej startat, reg. EVENT_HOMEASSISTANT_START listener.",
+                    self._config_entry.title,
+                )
             self._event_start_listener_unsub_handle = self.hass.bus.async_listen_once(
                 EVENT_HOMEASSISTANT_START, self._async_home_assistant_started
             )
             self._listeners.append(self._event_start_listener_unsub_handle)
         else:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] HA körs, anropar _perform_initial_updates_and_control direkt.")
+                _LOGGER.debug(
+                    "[%s] HA körs, anropar _perform_initial_updates_and_control direkt.",
+                    self._config_entry.title,
+                )
             await self._perform_initial_updates_and_control()
 
         self._setup_sensor_listeners()
 
-    async def _async_options_updated_listener_proxy(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        if self._debug_logging_enabled: # Använder _debug_logging_enabled innan den potentiellt uppdateras
-             _LOGGER.debug(f"[{self._config_entry.title}] Options update listener proxy anropad. Debug innan uppdatering: {self._debug_logging_enabled}")
+    async def _async_options_updated_listener_proxy(
+        self, hass: HomeAssistant, entry: ConfigEntry
+    ) -> None:
+        """Proxy för att logga anrop till options-lyssnaren."""
+        if self._debug_logging_enabled:
+            _LOGGER.debug(
+                "[%s] Options update listener proxy anropad. Debug innan uppdatering: %s",
+                self._config_entry.title,
+                self._debug_logging_enabled,
+            )
         await self._async_options_updated(hass, entry)
 
-    async def _perform_initial_updates_and_control(self):
+    async def _perform_initial_updates_and_control(self) -> None:
+        """Utför initiala uppdateringar och värmestyrning."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] _perform_initial_updates_and_control anropad.")
+            _LOGGER.debug(
+                "[%s] _perform_initial_updates_and_control anropad.",
+                self._config_entry.title,
+            )
         if self._temp_sensor_entity_id:
             temp_sensor_state = self.hass.states.get(self._temp_sensor_entity_id)
             if temp_sensor_state:
@@ -151,134 +260,230 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         await self._control_heating()
         self.async_schedule_update_ha_state(True)
 
-    def _setup_sensor_listeners(self):
+    def _setup_sensor_listeners(self) -> None:
+        """Sätt upp lyssnare för sensorer och switchar."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Sätter upp sensorlyssnare (rensa gamla först).")
+            _LOGGER.debug(
+                "[%s] Sätter upp sensorlyssnare (rensa gamla först).",
+                self._config_entry.title,
+            )
         self._remove_listeners()
 
         if self._temp_sensor_entity_id:
-            unsub = async_track_state_change_event(self.hass, self._temp_sensor_entity_id, self._async_temp_sensor_changed)
+            unsub = async_track_state_change_event(
+                self.hass, self._temp_sensor_entity_id, self._async_temp_sensor_changed
+            )
             self._listeners.append(unsub)
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Lade till lyssnare för tempsensor: {self._temp_sensor_entity_id}")
+                _LOGGER.debug(
+                    "[%s] Lade till lyssnare för tempsensor: %s",
+                    self._config_entry.title,
+                    self._temp_sensor_entity_id,
+                )
 
         if self._heater_switch_entity_id:
-            unsub = async_track_state_change_event(self.hass, self._heater_switch_entity_id, self._async_heater_switch_changed)
+            unsub = async_track_state_change_event(
+                self.hass, self._heater_switch_entity_id, self._async_heater_switch_changed
+            )
             self._listeners.append(unsub)
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Lade till lyssnare för värmeswitch: {self._heater_switch_entity_id}")
+                _LOGGER.debug(
+                    "[%s] Lade till lyssnare för värmeswitch: %s",
+                    self._config_entry.title,
+                    self._heater_switch_entity_id,
+                )
 
-    async def _async_home_assistant_started(self, event: Event):
+    async def _async_home_assistant_started(self, event: Event) -> None:
+        """Körs när Home Assistant har startat fullt ut."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Event: Home Assistant startad fullt ut.")
+            _LOGGER.debug(
+                "[%s] Event: Home Assistant startad fullt ut.", self._config_entry.title
+            )
 
         if self._event_start_listener_unsub_handle is not None:
             if self._event_start_listener_unsub_handle in self._listeners:
                 try:
                     self._listeners.remove(self._event_start_listener_unsub_handle)
                     if self._debug_logging_enabled:
-                        _LOGGER.debug(f"[{self._config_entry.title}] Tog bort EVENT_HOMEASSISTANT_START lyssnar-handle från self._listeners.")
+                        _LOGGER.debug(
+                            "[%s] Tog bort EVENT_HOMEASSISTANT_START lyssnar-handle från self._listeners.",
+                            self._config_entry.title,
+                        )
                 except ValueError:
                     if self._debug_logging_enabled:
-                        _LOGGER.debug(f"[{self._config_entry.title}] EVENT_HOMEASSISTANT_START lyssnar-handle hittades ej i self._listeners vid borttagning.")
+                        _LOGGER.debug(
+                            "[%s] EVENT_HOMEASSISTANT_START lyssnar-handle hittades ej i self._listeners vid borttagning.",
+                            self._config_entry.title,
+                        )
             self._event_start_listener_unsub_handle = None
 
         await self._perform_initial_updates_and_control()
 
     async def async_will_remove_from_hass(self) -> None:
+        """Körs när entiteten tas bort från Home Assistant."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_will_remove_from_hass: Tar bort lyssnare.")
+            _LOGGER.debug(
+                "[%s] async_will_remove_from_hass: Tar bort lyssnare.",
+                self._config_entry.title,
+            )
         self._remove_listeners()
         await super().async_will_remove_from_hass()
 
-    def _remove_listeners(self):
+    def _remove_listeners(self) -> None:
+        """Tar bort alla registrerade lyssnare."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] _remove_listeners anropad. Antal lyssnare innan: {len(self._listeners)}")
+            _LOGGER.debug(
+                "[%s] _remove_listeners anropad. Antal lyssnare innan: %d",
+                self._config_entry.title,
+                len(self._listeners),
+            )
         for unsub in self._listeners:
             try:
                 unsub()
             except Exception as e:
-                _LOGGER.warning(f"[{self._config_entry.title}] Fel vid avregistrering av lyssnare: {e}")
+                _LOGGER.warning(
+                    "[%s] Fel vid avregistrering av lyssnare: %s", self._config_entry.title, e
+                )
         self._listeners.clear()
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Alla lyssnare borttagna från self._listeners.")
+            _LOGGER.debug(
+                "[%s] Alla lyssnare borttagna från self._listeners.", self._config_entry.title
+            )
 
         if self._event_start_listener_unsub_handle is not None:
-            # Denna bör redan vara hanterad av _async_home_assistant_started eller borttagen från _listeners
-            # Men som en extra säkerhet, om den fortfarande finns och inte är i _listeners.
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Försöker explicit avregistrera _event_start_listener_unsub_handle om den finns kvar (bör ej vara fallet om HA startat eller om den fanns i _listeners).")
+                _LOGGER.debug(
+                    "[%s] Försöker explicit avregistrera _event_start_listener_unsub_handle om den finns kvar.",
+                    self._config_entry.title,
+                )
             try:
                 self._event_start_listener_unsub_handle()
             except Exception as e:
-                 _LOGGER.warning(f"[{self._config_entry.title}] Fel vid explicit avregistrering av _event_start_listener_unsub_handle: {e}")
+                _LOGGER.warning(
+                    "[%s] Fel vid explicit avregistrering av _event_start_listener_unsub_handle: %s",
+                    self._config_entry.title,
+                    e,
+                )
             self._event_start_listener_unsub_handle = None
 
     @callback
-    async def _update_config_from_options(self):
+    async def _update_config_from_options(self) -> None:
+        """Uppdaterar intern konfiguration baserat på ändrade options."""
         self._config_data = {**self._config_entry.data, **self._config_entry.options}
-        new_debug_logging_enabled = self._config_entry.options.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING)
+        new_debug_logging_enabled = self._config_entry.options.get(
+            CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING
+        )
         if self._debug_logging_enabled != new_debug_logging_enabled:
-            # Behålls som INFO: Viktig feedback om att debug-läget ändrats.
-            _LOGGER.info(f"[{self._config_entry.title}] Debug-loggning ändrad till: {new_debug_logging_enabled}")
+            _LOGGER.info(
+                "[%s] Debug-loggning ändrad till: %s",
+                self._config_entry.title,
+                new_debug_logging_enabled,
+            )
             self._debug_logging_enabled = new_debug_logging_enabled
 
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] _update_config_from_options: Laddar om konfiguration från options.")
-            _LOGGER.debug(f"[{self._config_entry.title}] Nya options som används: {self._config_entry.options}")
-            _LOGGER.debug(f"[{self._config_entry.title}] Fullständig sammanslagen config_data: {self._config_data}")
+            _LOGGER.debug(
+                "[%s] _update_config_from_options: Laddar om konfiguration från options.",
+                self._config_entry.title,
+            )
+            _LOGGER.debug(
+                "[%s] Nya options som används: %s",
+                self._config_entry.title,
+                self._config_entry.options,
+            )
+            _LOGGER.debug(
+                "[%s] Fullständig sammanslagen config_data: %s",
+                self._config_entry.title,
+                self._config_data,
+            )
 
         new_temp_sensor = self._config_entry.options.get(CONF_TEMP_SENSOR_ENTITY)
         new_heater_switch = self._config_entry.options.get(CONF_HEATER_SWITCH_ENTITY)
         listeners_need_reset = False
 
         if self._temp_sensor_entity_id != new_temp_sensor:
-            # Behålls som INFO: Viktig konfigurationsändring.
-            _LOGGER.info(f"[{self._config_entry.title}] Temperatursensor ändrad från '{self._temp_sensor_entity_id}' till: '{new_temp_sensor}'")
+            _LOGGER.info(
+                "[%s] Temperatursensor ändrad från '%s' till: '%s'",
+                self._config_entry.title,
+                self._temp_sensor_entity_id,
+                new_temp_sensor,
+            )
             self._temp_sensor_entity_id = new_temp_sensor
             listeners_need_reset = True
         if self._heater_switch_entity_id != new_heater_switch:
-            # Behålls som INFO: Viktig konfigurationsändring.
-            _LOGGER.info(f"[{self._config_entry.title}] Värmeswitch ändrad från '{self._heater_switch_entity_id}' till: '{new_heater_switch}'")
+            _LOGGER.info(
+                "[%s] Värmeswitch ändrad från '%s' till: '%s'",
+                self._config_entry.title,
+                self._heater_switch_entity_id,
+                new_heater_switch,
+            )
             self._heater_switch_entity_id = new_heater_switch
             listeners_need_reset = True
 
-        self._hysteresis = self._config_entry.options.get(CONF_HYSTERESIS, DEFAULT_HYSTERESIS)
+        self._hysteresis = self._config_entry.options.get(
+            CONF_HYSTERESIS, DEFAULT_HYSTERESIS
+        )
         new_master_enabled_option = self._config_entry.options.get(CONF_MASTER_ENABLED)
 
         if new_master_enabled_option is not None:
-            target_hvac_mode = HVACMode.HEAT if new_master_enabled_option else HVACMode.OFF
+            target_hvac_mode = (
+                HVACMode.HEAT if new_master_enabled_option else HVACMode.OFF
+            )
             if self._attr_hvac_mode != target_hvac_mode:
-                # Behålls som INFO: Viktig tillståndsändring driven av konfiguration.
-                _LOGGER.info(f"[{self._config_entry.title}] HVAC-läge uppdaterat till {self._attr_hvac_mode} via options-ändring (master_enabled).")
+                _LOGGER.info(
+                    "[%s] HVAC-läge uppdaterat till %s via options-ändring (master_enabled).",
+                    self._config_entry.title,
+                    target_hvac_mode,
+                )
+                self._attr_hvac_mode = target_hvac_mode
 
         if listeners_need_reset:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Återställer sensorlyssnare pga options-ändring.")
+                _LOGGER.debug(
+                    "[%s] Återställer sensorlyssnare pga options-ändring.",
+                    self._config_entry.title,
+                )
             self._setup_sensor_listeners()
-            if self.hass.is_running: await self._perform_initial_updates_and_control()
+            if self.hass.is_running:
+                await self._perform_initial_updates_and_control()
 
     @callback
-    async def _async_options_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        # Ändrad till DEBUG: Detta är en intern händelse som bekräftar att options-flödet är klart.
+    async def _async_options_updated(
+        self, hass: HomeAssistant, entry: ConfigEntry
+    ) -> None:
+        """Hanterar uppdateringar av options för en config entry."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] _async_options_updated: Options har ändrats, applicerar.")
+            _LOGGER.debug(
+                "[%s] _async_options_updated: Options har ändrats, applicerar.",
+                self._config_entry.title,
+            )
         await self._update_config_from_options()
         await self._control_heating()
         self.async_schedule_update_ha_state()
         if self._debug_logging_enabled:
-             _LOGGER.debug(f"[{self._config_entry.title}] _async_options_updated slutförd. Debug nu: {self._debug_logging_enabled}")
+            _LOGGER.debug(
+                "[%s] _async_options_updated slutförd. Debug nu: %s",
+                self._config_entry.title,
+                self._debug_logging_enabled,
+            )
 
     @callback
     async def _async_temp_sensor_changed(self, event: Event) -> None:
-        new_state: Optional[State] = event.data.get("new_state")
+        """Hanterar ändringar av temperatursensorns tillstånd."""
+        new_state: State | None = event.data.get("new_state")
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Tempsensor '{self._temp_sensor_entity_id}' ändrades: {new_state.state if new_state else 'None'}")
+            _LOGGER.debug(
+                "[%s] Tempsensor '%s' ändrades: %s",
+                self._config_entry.title,
+                self._temp_sensor_entity_id,
+                new_state.state if new_state else "None",
+            )
         if self._update_from_temp_sensor_state(new_state):
             await self._control_heating()
             self.async_schedule_update_ha_state()
 
-    def _update_from_temp_sensor_state(self, state: Optional[State]) -> bool: # Synkron
+    def _update_from_temp_sensor_state(self, state: State | None) -> bool:
+        """Uppdaterar intern temperatur från sensorns tillstånd. Returnerar True om ändring skett."""
         changed = False
         if state and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             try:
@@ -286,178 +491,342 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 if self._current_temp != current_temp:
                     self._current_temp = current_temp
                     if self._debug_logging_enabled:
-                        _LOGGER.debug(f"[{self._config_entry.title}] Aktuell temperatur {self._current_temp}°C från {self._temp_sensor_entity_id}")
+                        _LOGGER.debug(
+                            "[%s] Aktuell temperatur %.1f°C från %s",
+                            self._config_entry.title,
+                            self._current_temp,
+                            self._temp_sensor_entity_id,
+                        )
                     changed = True
             except ValueError:
-                _LOGGER.warning(f"[{self._config_entry.title}] Kunde inte tolka temp från {self._temp_sensor_entity_id}: {state.state}")
-                if self._current_temp is not None: changed = True
+                _LOGGER.warning(
+                    "[%s] Kunde inte tolka temp från %s: %s",
+                    self._config_entry.title,
+                    self._temp_sensor_entity_id,
+                    state.state,
+                )
+                if self._current_temp is not None:
+                    changed = True
                 self._current_temp = None
         elif self._current_temp is not None:
-            _LOGGER.warning(f"[{self._config_entry.title}] Temperatursensor {self._temp_sensor_entity_id} otillgänglig eller okänt tillstånd ({state.state if state else 'None'}).")
+            _LOGGER.warning(
+                "[%s] Temperatursensor %s otillgänglig eller okänt tillstånd (%s).",
+                self._config_entry.title,
+                self._temp_sensor_entity_id,
+                state.state if state else "None",
+            )
             self._current_temp = None
             changed = True
         return changed
 
     @callback
     def _async_heater_switch_changed(self, event: Event) -> None:
-        new_state_obj: Optional[State] = event.data.get("new_state")
-        old_state_obj: Optional[State] = event.data.get("old_state")
+        """Hanterar ändringar av värmeswitchens tillstånd."""
+        new_state_obj: State | None = event.data.get("new_state")
+        old_state_obj: State | None = event.data.get("old_state")
         switch_state_new = new_state_obj.state if new_state_obj else "okänt (ingen ny state)"
         switch_state_old = old_state_obj.state if old_state_obj else "okänt (ingen gammal state)"
 
         if new_state_obj and old_state_obj and new_state_obj.state == old_state_obj.state:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Värmeswitch '{self._heater_switch_entity_id}' attribut ändrades, men tillstånd ('{switch_state_new}') oförändrat. Ignorerar för HVACAction-uppdatering.")
+                _LOGGER.debug(
+                    "[%s] Värmeswitch '%s' attribut ändrades, men tillstånd ('%s') oförändrat. Ignorerar.",
+                    self._config_entry.title,
+                    self._heater_switch_entity_id,
+                    switch_state_new,
+                )
             return
 
-        # Ändrad till DEBUG: Detta loggar en extern händelse. Kan vara DEBUG för att minska brus.
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Värmeswitch '{self._heater_switch_entity_id}' ändrades från '{switch_state_old}' till '{switch_state_new}'. Förbereder schemaläggning av HA-statusuppdatering för HVACAction.")
+            _LOGGER.debug(
+                "[%s] Värmeswitch '%s' ändrades från '%s' till '%s'. Schemalägger HA-statusuppdatering.",
+                self._config_entry.title,
+                self._heater_switch_entity_id,
+                switch_state_old,
+                switch_state_new,
+            )
         try:
             self.async_schedule_update_ha_state()
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] async_schedule_update_ha_state ANROPAD från _async_heater_switch_changed.")
+                _LOGGER.debug(
+                    "[%s] async_schedule_update_ha_state ANROPAD från _async_heater_switch_changed.",
+                    self._config_entry.title,
+                )
         except Exception as e:
-            _LOGGER.error(f"[{self._config_entry.title}] FEL vid anrop av async_schedule_update_ha_state i _async_heater_switch_changed: {e}", exc_info=True)
+            _LOGGER.error(
+                "[%s] FEL vid anrop av async_schedule_update_ha_state i _async_heater_switch_changed: %s",
+                self._config_entry.title,
+                e,
+                exc_info=True,
+            )
 
     async def _control_heating(self) -> None:
+        """Styr värmeelementet baserat på temperatur och inställningar."""
         if self._attr_hvac_mode != HVACMode.HEAT:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] HVAC-läge {self._attr_hvac_mode}, styr ej värme.")
+                _LOGGER.debug(
+                    "[%s] HVAC-läge %s, styr ej värme.",
+                    self._config_entry.title,
+                    self._attr_hvac_mode,
+                )
             if self._heater_switch_entity_id:
-                current_heater_state_obj = self.hass.states.get(self._heater_switch_entity_id)
+                current_heater_state_obj = self.hass.states.get(
+                    self._heater_switch_entity_id
+                )
                 if current_heater_state_obj and current_heater_state_obj.state == "on":
-                    # Behålls som INFO: Specifikt om att stänga av värmaren.
-                    _LOGGER.info(f"[{self._config_entry.title}] Termostat är AV (läge: {self._attr_hvac_mode}), stänger av värmare {self._heater_switch_entity_id}.")
+                    _LOGGER.info(
+                        "[%s] Termostat är AV (läge: %s), stänger av värmare %s.",
+                        self._config_entry.title,
+                        self._attr_hvac_mode,
+                        self._heater_switch_entity_id,
+                    )
                     await self._set_heater_state(False)
             return
 
         if self._current_temp is None or self._target_temp is None:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Aktuell temp ({self._current_temp}) eller måltemp ({self._target_temp}) okänd. Kan ej styra värme.")
+                _LOGGER.debug(
+                    "[%s] Aktuell temp (%s) eller måltemp (%s) okänd. Kan ej styra värme.",
+                    self._config_entry.title,
+                    self._current_temp,
+                    self._target_temp,
+                )
             return
 
         if not self._heater_switch_entity_id:
-            _LOGGER.warning(f"[{self._config_entry.title}] Ingen värmeswitch konfigurerad för styrning.")
+            _LOGGER.warning(
+                "[%s] Ingen värmeswitch konfigurerad för styrning.",
+                self._config_entry.title,
+            )
             return
 
         heater_state_obj = self.hass.states.get(self._heater_switch_entity_id)
         if not heater_state_obj:
-            _LOGGER.warning(f"[{self._config_entry.title}] Värmeswitch {self._heater_switch_entity_id} ej hittad i HA:s tillstånd. Kan ej styra.")
+            _LOGGER.warning(
+                "[%s] Värmeswitch %s ej hittad i HA:s tillstånd. Kan ej styra.",
+                self._config_entry.title,
+                self._heater_switch_entity_id,
+            )
             return
 
         is_heater_on = heater_state_obj.state == "on"
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Styrlogik: Akt: {self._current_temp}°C, Mål: {self._target_temp}°C, Hys: {self._hysteresis}°C, Värmare: {'PÅ' if is_heater_on else 'AV'}")
+            _LOGGER.debug(
+                "[%s] Styrlogik: Akt: %.1f°C, Mål: %.1f°C, Hys: %.1f°C, Värmare: %s",
+                self._config_entry.title,
+                self._current_temp or -99.9,
+                self._target_temp or -99.9,
+                self._hysteresis,
+                "PÅ" if is_heater_on else "AV",
+            )
 
         lower_bound = self._target_temp - (self._hysteresis / 2)
         upper_bound = self._target_temp + (self._hysteresis / 2)
-        desired_action_turn_on = None
+        desired_action_turn_on: bool | None = None
 
         if is_heater_on:
             if self._current_temp >= upper_bound:
                 if self._debug_logging_enabled:
-                    _LOGGER.debug(f"[{self._config_entry.title}] Temp {self._current_temp}°C >= övre gräns {upper_bound}°C. Önskar stänga AV.")
+                    _LOGGER.debug(
+                        "[%s] Temp %.1f°C >= övre gräns %.1f°C. Önskar stänga AV.",
+                        self._config_entry.title,
+                        self._current_temp,
+                        upper_bound,
+                    )
                 desired_action_turn_on = False
         else:
             if self._current_temp <= lower_bound:
                 if self._debug_logging_enabled:
-                    _LOGGER.debug(f"[{self._config_entry.title}] Temp {self._current_temp}°C <= nedre gräns {lower_bound}°C. Önskar slå PÅ.")
+                    _LOGGER.debug(
+                        "[%s] Temp %.1f°C <= nedre gräns %.1f°C. Önskar slå PÅ.",
+                        self._config_entry.title,
+                        self._current_temp,
+                        lower_bound,
+                    )
                 desired_action_turn_on = True
 
         if desired_action_turn_on is True:
-            # Behålls som INFO: Specifikt om att slå PÅ värmaren.
-            _LOGGER.info(f"[{self._config_entry.title}] Värmaren är AV, men temperaturen ({self._current_temp}°C) är under eller lika med nedre gräns ({lower_bound}°C). Slår PÅ värmaren.")
+            _LOGGER.info(
+                "[%s] Värmaren är AV, men temperaturen (%.1f°C) är under eller lika med nedre gräns (%.1f°C). Slår PÅ värmaren.",
+                self._config_entry.title,
+                self._current_temp,
+                lower_bound,
+            )
             await self._set_heater_state(True)
         elif desired_action_turn_on is False:
-            # Behålls som INFO: Specifikt om att stänga AV värmaren.
-            _LOGGER.info(f"[{self._config_entry.title}] Värmaren är PÅ, men temperaturen ({self._current_temp}°C) är över eller lika med övre gräns ({upper_bound}°C). Stänger AV värmaren.")
+            _LOGGER.info(
+                "[%s] Värmaren är PÅ, men temperaturen (%.1f°C) är över eller lika med övre gräns (%.1f°C). Stänger AV värmaren.",
+                self._config_entry.title,
+                self._current_temp,
+                upper_bound,
+            )
             await self._set_heater_state(False)
         else:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Värmarens nuvarande tillstånd ('{'PÅ' if is_heater_on else 'AV'}') matchar önskat tillstånd baserat på temp ({self._current_temp}°C) vs gränser ({lower_bound}°C-{upper_bound}°C). Ingen åtgärd.")
+                _LOGGER.debug(
+                    "[%s] Värmarens nuvarande tillstånd ('%s') matchar önskat tillstånd baserat på temp (%.1f°C) vs gränser (%.1f°C-%.1f°C). Ingen åtgärd.",
+                    self._config_entry.title,
+                    "PÅ" if is_heater_on else "AV",
+                    self._current_temp or -99.9,
+                    lower_bound,
+                    upper_bound,
+                )
 
     async def _set_heater_state(self, turn_on: bool) -> None:
+        """Sätter värmeelementets tillstånd (på/av)."""
         if not self._heater_switch_entity_id:
-            _LOGGER.warning(f"[{self._config_entry.title}] Ingen värmeswitch konfigurerad, kan inte ändra status.")
+            _LOGGER.warning(
+                "[%s] Ingen värmeswitch konfigurerad, kan inte ändra status.",
+                self._config_entry.title,
+            )
             return
 
         service_to_call = "turn_on" if turn_on else "turn_off"
         entity_id_to_call = self._heater_switch_entity_id
         current_state = self.hass.states.get(entity_id_to_call)
 
-        if current_state and ((turn_on and current_state.state == "on") or (not turn_on and current_state.state == "off")):
+        if current_state and (
+            (turn_on and current_state.state == "on")
+            or (not turn_on and current_state.state == "off")
+        ):
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Värmare '{entity_id_to_call}' är redan i önskat läge ('{current_state.state}'). Inget serviceanrop görs.")
+                _LOGGER.debug(
+                    "[%s] Värmare '%s' är redan i önskat läge ('%s'). Inget serviceanrop görs.",
+                    self._config_entry.title,
+                    entity_id_to_call,
+                    current_state.state,
+                )
             return
 
-        # Behålls som INFO: Specifikt om att anropa tjänst för att ändra värmarens tillstånd.
-        _LOGGER.info(f"[{self._config_entry.title}] Anropar service switch.{service_to_call} för entitet '{entity_id_to_call}'.")
+        _LOGGER.info(
+            "[%s] Anropar service switch.%s för entitet '%s'.",
+            self._config_entry.title,
+            service_to_call,
+            entity_id_to_call,
+        )
         try:
             await self.hass.services.async_call(
-                "switch", service_to_call, {"entity_id": entity_id_to_call}, blocking=True, context=self._context
+                "switch",
+                service_to_call,
+                {"entity_id": entity_id_to_call},
+                blocking=True,
+                context=self._context,
             )
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Serviceanrop switch.{service_to_call} för '{entity_id_to_call}' slutfört.")
+                _LOGGER.debug(
+                    "[%s] Serviceanrop switch.%s för '%s' slutfört.",
+                    self._config_entry.title,
+                    service_to_call,
+                    entity_id_to_call,
+                )
         except Exception as e:
-            _LOGGER.error(f"[{self._config_entry.title}] FEL vid anrop till switch.{service_to_call} för '{entity_id_to_call}': {e}", exc_info=True)
+            _LOGGER.error(
+                "[%s] FEL vid anrop till switch.%s för '%s': %s",
+                self._config_entry.title,
+                service_to_call,
+                entity_id_to_call,
+                e,
+                exc_info=True,
+            )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Sätt ny måltemperatur."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_set_temperature anropad med: {kwargs}")
+            _LOGGER.debug(
+                "[%s] async_set_temperature anropad med: %s",
+                self._config_entry.title,
+                kwargs,
+            )
 
         if temperature is None:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Ingen temperatur angiven i async_set_temperature.")
+                _LOGGER.debug(
+                    "[%s] Ingen temperatur angiven i async_set_temperature.",
+                    self._config_entry.title,
+                )
             return
 
         new_target_temp = float(temperature)
         if new_target_temp == self._target_temp:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Måltemperatur redan {new_target_temp}°C, ingen ändring.")
+                _LOGGER.debug(
+                    "[%s] Måltemperatur redan %.1f°C, ingen ändring.",
+                    self._config_entry.title,
+                    new_target_temp,
+                )
             return
 
-        # Behålls som INFO: Bekräftelse på användaråtgärd.
         self._target_temp = new_target_temp
-        _LOGGER.info(f"[{self._config_entry.title}] Ny måltemperatur satt till {self._target_temp}°C.")
+        _LOGGER.info(
+            "[%s] Ny måltemperatur satt till %.1f°C.",
+            self._config_entry.title,
+            self._target_temp,
+        )
         await self._control_heating()
         self.async_write_ha_state()
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_write_ha_state anropad efter måltemperaturändring.")
+            _LOGGER.debug(
+                "[%s] async_write_ha_state anropad efter måltemperaturändring.",
+                self._config_entry.title,
+            )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Sätt nytt HVAC-läge."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_set_hvac_mode anropad med: {hvac_mode}")
+            _LOGGER.debug(
+                "[%s] async_set_hvac_mode anropad med: %s",
+                self._config_entry.title,
+                hvac_mode,
+            )
 
         if hvac_mode not in self._attr_hvac_modes:
-            _LOGGER.warning(f"[{self._config_entry.title}] HVAC-läge {hvac_mode} stöds ej. Tillgängliga: {self._attr_hvac_modes}")
+            _LOGGER.warning(
+                "[%s] HVAC-läge %s stöds ej. Tillgängliga: %s",
+                self._config_entry.title,
+                hvac_mode,
+                self._attr_hvac_modes,
+            )
             return
 
         if hvac_mode == self._attr_hvac_mode:
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] HVAC-läge redan {hvac_mode}, ingen ändring.")
+                _LOGGER.debug(
+                    "[%s] HVAC-läge redan %s, ingen ändring.",
+                    self._config_entry.title,
+                    hvac_mode,
+                )
             return
 
-        # Behålls som INFO: Bekräftelse på användaråtgärd.
-        _LOGGER.info(f"[{self._config_entry.title}] Sätter HVAC-läge till {hvac_mode}.")
+        _LOGGER.info("[%s] Sätter HVAC-läge till %s.", self._config_entry.title, hvac_mode)
         self._attr_hvac_mode = hvac_mode
         new_options = {**self._config_entry.options}
-        new_options[CONF_MASTER_ENABLED] = (hvac_mode == HVACMode.HEAT)
+        new_options[CONF_MASTER_ENABLED] = hvac_mode == HVACMode.HEAT
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] Uppdaterar config_entry options med CONF_MASTER_ENABLED={new_options[CONF_MASTER_ENABLED]}")
-        self.hass.config_entries.async_update_entry(self._config_entry, options=new_options)
+            _LOGGER.debug(
+                "[%s] Uppdaterar config_entry options med CONF_MASTER_ENABLED=%s",
+                self._config_entry.title,
+                new_options[CONF_MASTER_ENABLED],
+            )
+        self.hass.config_entries.async_update_entry(
+            self._config_entry, options=new_options
+        )
         await self._control_heating()
         self.async_write_ha_state()
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_write_ha_state anropad efter HVAC-lägesändring.")
+            _LOGGER.debug(
+                "[%s] async_write_ha_state anropad efter HVAC-lägesändring.",
+                self._config_entry.title,
+            )
 
     async def async_turn_on(self) -> None:
+        """Slå på termostaten (sätt HVAC-läge till HEAT)."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_turn_on anropad.")
+            _LOGGER.debug("[%s] async_turn_on anropad.", self._config_entry.title)
         await self.async_set_hvac_mode(HVACMode.HEAT)
 
     async def async_turn_off(self) -> None:
+        """Slå av termostaten (sätt HVAC-läge till OFF)."""
         if self._debug_logging_enabled:
-            _LOGGER.debug(f"[{self._config_entry.title}] async_turn_off anropad.")
+            _LOGGER.debug("[%s] async_turn_off anropad.", self._config_entry.title)
         await self.async_set_hvac_mode(HVACMode.OFF)

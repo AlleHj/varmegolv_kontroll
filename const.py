@@ -1,6 +1,6 @@
-"""
-Konstanter för Golvvärmekontroll integrationen.
-2025-05-28 2.3.0
+"""Konstanter för Golvvärmekontroll integrationen.
+
+2025-05-28 2.3.3
 """
 
 DOMAIN = "varmegolv_kontroll"
@@ -11,8 +11,8 @@ CONF_HEATER_SWITCH_ENTITY = "heater_switch_entity_id"
 CONF_HYSTERESIS = "hysteresis"
 CONF_MASTER_ENABLED = "master_enabled"
 CONF_TARGET_TEMP = "target_temp"
-CONF_NAME = "name" # Nyckel för namnet på instansen
-CONF_DEBUG_LOGGING = "debug_logging" # Nyckel för att aktivera/deaktivera debug-loggning
+CONF_NAME = "name"
+CONF_DEBUG_LOGGING = "debug_logging"
 
 # Standardvärden
 DEFAULT_NAME = "Golvvärmekontroll"

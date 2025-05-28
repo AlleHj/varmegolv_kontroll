@@ -1,7 +1,7 @@
 {
   "domain": "varmegolv_kontroll",
   "name": "Golvv\u00e4rmekontroll",
-  "version": "2.3.2",
+  "version": "2.3.4",
   "documentation": "https://github.com/AlleHj/home-assistant-varmegolv_kontroll",
   "issue_tracker": "https://github.com/AlleHj/home-assistant-varmegolv_kontroll/issues",
   "codeowners": ["@AlleHj"],
