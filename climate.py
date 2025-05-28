@@ -1,6 +1,6 @@
 """
 Climate-plattform för Golvvärmekontroll.
-2025-05-28 2.3.1
+2025-05-28 2.3.2
 """
 import logging
 import functools
@@ -30,6 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback,
 ) -> None:
+    # Denna INFO-logg är för uppsättning på modulnivå, behålls som INFO.
     _LOGGER.info(f"Sätter upp climate-entitet för '{config_entry.title}' ({config_entry.entry_id}) v{config_entry.version}")
     initial_config_data = {**config_entry.data, **config_entry.options}
     controller = VarmegolvClimate(hass, config_entry, initial_config_data)
@@ -63,14 +64,13 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         self._attr_hvac_mode: HVACMode = HVACMode.HEAT if initial_master_enabled else HVACMode.OFF
         self._attr_hvac_action: Optional[HVACAction] = None
         self._listeners: List[Callable[[], None]] = []
-        self._event_start_listener_unsub_handle: Optional[Callable[[], None]] = None # För EVENT_HOMEASSISTANT_START
+        self._event_start_listener_unsub_handle: Optional[Callable[[], None]] = None
 
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] __init__: TargetTemp={self._target_temp}, HVACMode={self._attr_hvac_mode}, DebugLog={self._debug_logging_enabled}")
 
     @property
     def device_info(self):
-        # Använder self._config_entry.version för att reflektera versionen från manifestet
         return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": self._config_entry.title, "manufacturer": "Anpassad Komponent AB (AlleHj)", "model": "Golvvärmetermostat", "sw_version": self._config_entry.version}
 
     @property
@@ -125,24 +125,20 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         if not self.hass.is_running:
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] HA ej startat, reg. EVENT_HOMEASSISTANT_START listener.")
-            # Spara referensen till avregistreringsfunktionen specifikt
             self._event_start_listener_unsub_handle = self.hass.bus.async_listen_once(
                 EVENT_HOMEASSISTANT_START, self._async_home_assistant_started
             )
-            # Lägg fortfarande till den i den generella listan för _remove_listeners om komponenten tas bort innan HA startar.
             self._listeners.append(self._event_start_listener_unsub_handle)
         else:
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] HA körs, anropar _perform_initial_updates_and_control direkt.")
-            # HA körs redan, så vi behöver inte lyssna på EVENT_HOMEASSISTANT_START
-            # Kör initieringslogiken direkt
-            await self._perform_initial_updates_and_control() # Detta saknades tidigare i denna else-gren
+            await self._perform_initial_updates_and_control()
 
-        self._setup_sensor_listeners() # Sätt upp lyssnare för sensorer EFTER eventuell startlistener är hanterad
+        self._setup_sensor_listeners()
 
     async def _async_options_updated_listener_proxy(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        if self._debug_logging_enabled:
-             _LOGGER.debug(f"[{self._config_entry.title}] Options update listener proxy anropad. Gamla debug: {self._debug_logging_enabled}")
+        if self._debug_logging_enabled: # Använder _debug_logging_enabled innan den potentiellt uppdateras
+             _LOGGER.debug(f"[{self._config_entry.title}] Options update listener proxy anropad. Debug innan uppdatering: {self._debug_logging_enabled}")
         await self._async_options_updated(hass, entry)
 
     async def _perform_initial_updates_and_control(self):
@@ -158,9 +154,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
     def _setup_sensor_listeners(self):
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] Sätter upp sensorlyssnare (rensa gamla först).")
-        self._remove_listeners() # Rensa ALLA gamla lyssnare
+        self._remove_listeners()
 
-        # Lägg till nya sensorlyssnare
         if self._temp_sensor_entity_id:
             unsub = async_track_state_change_event(self.hass, self._temp_sensor_entity_id, self._async_temp_sensor_changed)
             self._listeners.append(unsub)
@@ -173,20 +168,10 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] Lade till lyssnare för värmeswitch: {self._heater_switch_entity_id}")
 
-        # Återlägg EVENT_HOMEASSISTANT_START listener om den togs bort av _remove_listeners och fortfarande behövs
-        # Detta hanteras nu bättre genom att _event_start_listener_unsub_handle tas bort från _listeners
-        # när den har kört. Om _setup_sensor_listeners anropas innan HA startat och _event_start_listener_unsub_handle
-        # finns, kommer _remove_listeners anropa den (vilket är OK, den avbryts).
-        # Men den ska inte läggas till igen här, den sätts bara i async_added_to_hass.
-
-
     async def _async_home_assistant_started(self, event: Event):
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] Event: Home Assistant startad fullt ut.")
 
-        # Lyssnaren har nu aktiverats. Ta bort dess avregistreringsfunktion från vår lista
-        # för att förhindra att _remove_listeners försöker anropa den igen.
-        # async_listen_once hanterar sin egen avregistrering från bussen.
         if self._event_start_listener_unsub_handle is not None:
             if self._event_start_listener_unsub_handle in self._listeners:
                 try:
@@ -194,9 +179,9 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                     if self._debug_logging_enabled:
                         _LOGGER.debug(f"[{self._config_entry.title}] Tog bort EVENT_HOMEASSISTANT_START lyssnar-handle från self._listeners.")
                 except ValueError:
-                    if self._debug_logging_enabled: # Bör inte hända
+                    if self._debug_logging_enabled:
                         _LOGGER.debug(f"[{self._config_entry.title}] EVENT_HOMEASSISTANT_START lyssnar-handle hittades ej i self._listeners vid borttagning.")
-            self._event_start_listener_unsub_handle = None # Rensa vår referens
+            self._event_start_listener_unsub_handle = None
 
         await self._perform_initial_updates_and_control()
 
@@ -207,37 +192,34 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         await super().async_will_remove_from_hass()
 
     def _remove_listeners(self):
-        """Tar bort alla registrerade lyssnare."""
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] _remove_listeners anropad. Antal lyssnare innan: {len(self._listeners)}")
-        # Anropa avregistreringsfunktionen för varje lyssnare i listan
-        # och töm sedan listan.
         for unsub in self._listeners:
             try:
                 unsub()
-            except Exception as e: # Försök att avregistrera alla även om en misslyckas
+            except Exception as e:
                 _LOGGER.warning(f"[{self._config_entry.title}] Fel vid avregistrering av lyssnare: {e}")
         self._listeners.clear()
         if self._debug_logging_enabled:
             _LOGGER.debug(f"[{self._config_entry.title}] Alla lyssnare borttagna från self._listeners.")
 
-        # Säkerställ att även den specifika start-lyssnaren hanteras om den inte redan är det
-        # (Denna logik är nu primärt i _async_home_assistant_started och när komponenten tas bort helt)
         if self._event_start_listener_unsub_handle is not None:
+            # Denna bör redan vara hanterad av _async_home_assistant_started eller borttagen från _listeners
+            # Men som en extra säkerhet, om den fortfarande finns och inte är i _listeners.
             if self._debug_logging_enabled:
-                _LOGGER.debug(f"[{self._config_entry.title}] Försöker explicit avregistrera _event_start_listener_unsub_handle om den finns kvar (bör ej hända om HA startat).")
+                _LOGGER.debug(f"[{self._config_entry.title}] Försöker explicit avregistrera _event_start_listener_unsub_handle om den finns kvar (bör ej vara fallet om HA startat eller om den fanns i _listeners).")
             try:
                 self._event_start_listener_unsub_handle()
             except Exception as e:
                  _LOGGER.warning(f"[{self._config_entry.title}] Fel vid explicit avregistrering av _event_start_listener_unsub_handle: {e}")
             self._event_start_listener_unsub_handle = None
 
-
     @callback
     async def _update_config_from_options(self):
         self._config_data = {**self._config_entry.data, **self._config_entry.options}
         new_debug_logging_enabled = self._config_entry.options.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING)
         if self._debug_logging_enabled != new_debug_logging_enabled:
+            # Behålls som INFO: Viktig feedback om att debug-läget ändrats.
             _LOGGER.info(f"[{self._config_entry.title}] Debug-loggning ändrad till: {new_debug_logging_enabled}")
             self._debug_logging_enabled = new_debug_logging_enabled
 
@@ -251,10 +233,12 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         listeners_need_reset = False
 
         if self._temp_sensor_entity_id != new_temp_sensor:
+            # Behålls som INFO: Viktig konfigurationsändring.
             _LOGGER.info(f"[{self._config_entry.title}] Temperatursensor ändrad från '{self._temp_sensor_entity_id}' till: '{new_temp_sensor}'")
             self._temp_sensor_entity_id = new_temp_sensor
             listeners_need_reset = True
         if self._heater_switch_entity_id != new_heater_switch:
+            # Behålls som INFO: Viktig konfigurationsändring.
             _LOGGER.info(f"[{self._config_entry.title}] Värmeswitch ändrad från '{self._heater_switch_entity_id}' till: '{new_heater_switch}'")
             self._heater_switch_entity_id = new_heater_switch
             listeners_need_reset = True
@@ -265,27 +249,25 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         if new_master_enabled_option is not None:
             target_hvac_mode = HVACMode.HEAT if new_master_enabled_option else HVACMode.OFF
             if self._attr_hvac_mode != target_hvac_mode:
-                self._attr_hvac_mode = target_hvac_mode
+                # Behålls som INFO: Viktig tillståndsändring driven av konfiguration.
                 _LOGGER.info(f"[{self._config_entry.title}] HVAC-läge uppdaterat till {self._attr_hvac_mode} via options-ändring (master_enabled).")
 
         if listeners_need_reset:
             if self._debug_logging_enabled:
                 _LOGGER.debug(f"[{self._config_entry.title}] Återställer sensorlyssnare pga options-ändring.")
-            self._setup_sensor_listeners() # Detta anropar _remove_listeners() först
+            self._setup_sensor_listeners()
             if self.hass.is_running: await self._perform_initial_updates_and_control()
 
     @callback
     async def _async_options_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        _LOGGER.info(f"[{self._config_entry.title}] _async_options_updated: Options har ändrats, applicerar.")
+        # Ändrad till DEBUG: Detta är en intern händelse som bekräftar att options-flödet är klart.
+        if self._debug_logging_enabled:
+            _LOGGER.debug(f"[{self._config_entry.title}] _async_options_updated: Options har ändrats, applicerar.")
         await self._update_config_from_options()
         await self._control_heating()
         self.async_schedule_update_ha_state()
         if self._debug_logging_enabled:
              _LOGGER.debug(f"[{self._config_entry.title}] _async_options_updated slutförd. Debug nu: {self._debug_logging_enabled}")
-
-    # ... (resten av climate.py är oförändrad från föregående version med 2.3.0-logik) ...
-    # Se till att alla _LOGGER.debug är villkorade med self._debug_logging_enabled
-    # Jag inkluderar resten för fullständighet och för att säkerställa att inga debug-anrop missas.
 
     @callback
     async def _async_temp_sensor_changed(self, event: Event) -> None:
@@ -328,7 +310,9 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 _LOGGER.debug(f"[{self._config_entry.title}] Värmeswitch '{self._heater_switch_entity_id}' attribut ändrades, men tillstånd ('{switch_state_new}') oförändrat. Ignorerar för HVACAction-uppdatering.")
             return
 
-        _LOGGER.info(f"[{self._config_entry.title}] Värmeswitch '{self._heater_switch_entity_id}' ändrades från '{switch_state_old}' till '{switch_state_new}'. Förbereder schemaläggning av HA-statusuppdatering för HVACAction.")
+        # Ändrad till DEBUG: Detta loggar en extern händelse. Kan vara DEBUG för att minska brus.
+        if self._debug_logging_enabled:
+            _LOGGER.debug(f"[{self._config_entry.title}] Värmeswitch '{self._heater_switch_entity_id}' ändrades från '{switch_state_old}' till '{switch_state_new}'. Förbereder schemaläggning av HA-statusuppdatering för HVACAction.")
         try:
             self.async_schedule_update_ha_state()
             if self._debug_logging_enabled:
@@ -343,6 +327,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             if self._heater_switch_entity_id:
                 current_heater_state_obj = self.hass.states.get(self._heater_switch_entity_id)
                 if current_heater_state_obj and current_heater_state_obj.state == "on":
+                    # Behålls som INFO: Specifikt om att stänga av värmaren.
                     _LOGGER.info(f"[{self._config_entry.title}] Termostat är AV (läge: {self._attr_hvac_mode}), stänger av värmare {self._heater_switch_entity_id}.")
                     await self._set_heater_state(False)
             return
@@ -381,9 +366,11 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 desired_action_turn_on = True
 
         if desired_action_turn_on is True:
+            # Behålls som INFO: Specifikt om att slå PÅ värmaren.
             _LOGGER.info(f"[{self._config_entry.title}] Värmaren är AV, men temperaturen ({self._current_temp}°C) är under eller lika med nedre gräns ({lower_bound}°C). Slår PÅ värmaren.")
             await self._set_heater_state(True)
         elif desired_action_turn_on is False:
+            # Behålls som INFO: Specifikt om att stänga AV värmaren.
             _LOGGER.info(f"[{self._config_entry.title}] Värmaren är PÅ, men temperaturen ({self._current_temp}°C) är över eller lika med övre gräns ({upper_bound}°C). Stänger AV värmaren.")
             await self._set_heater_state(False)
         else:
@@ -404,6 +391,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 _LOGGER.debug(f"[{self._config_entry.title}] Värmare '{entity_id_to_call}' är redan i önskat läge ('{current_state.state}'). Inget serviceanrop görs.")
             return
 
+        # Behålls som INFO: Specifikt om att anropa tjänst för att ändra värmarens tillstånd.
         _LOGGER.info(f"[{self._config_entry.title}] Anropar service switch.{service_to_call} för entitet '{entity_id_to_call}'.")
         try:
             await self.hass.services.async_call(
@@ -430,6 +418,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 _LOGGER.debug(f"[{self._config_entry.title}] Måltemperatur redan {new_target_temp}°C, ingen ändring.")
             return
 
+        # Behålls som INFO: Bekräftelse på användaråtgärd.
         self._target_temp = new_target_temp
         _LOGGER.info(f"[{self._config_entry.title}] Ny måltemperatur satt till {self._target_temp}°C.")
         await self._control_heating()
@@ -450,6 +439,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 _LOGGER.debug(f"[{self._config_entry.title}] HVAC-läge redan {hvac_mode}, ingen ändring.")
             return
 
+        # Behålls som INFO: Bekräftelse på användaråtgärd.
         _LOGGER.info(f"[{self._config_entry.title}] Sätter HVAC-läge till {hvac_mode}.")
         self._attr_hvac_mode = hvac_mode
         new_options = {**self._config_entry.options}
