@@ -1,83 +1,53 @@
-"""Golvvärmekontroll Integration.
+"""
+Golvvärmekontroll Integration
 
-2025-05-28 2.3.3
+Versionshistorik:
+(Tidigare versioner...)
+2.1.0 - 2025-05-23 - Tillåter flera instanser med unika namn. Namnfältet är nu obligatoriskt i konfigurationen.
+2.1.2 - 2025-05-23 - Förhindrar onödig global omladdning av config entry när options (t.ex. HVAC-läge) ändras,
+                     då climate-entiteten hanterar detta live. Detta bör minska "ValueError" för lyssnare.
 """
 import logging
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.typing import ConfigType # Behålls om ConfigType används, annars onödig
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.typing import ConfigType
 
-from .const import ( # Importerat för migrering och setup_entry
-    CONF_DEBUG_LOGGING,
-    CONF_NAME,
-    CONF_TARGET_TEMP,
-    DEFAULT_DEBUG_LOGGING,
-    DEFAULT_NAME,
-    DEFAULT_TARGET_TEMP,
-    DOMAIN,
-)
+from .const import DOMAIN, CONF_NAME, DEFAULT_TARGET_TEMP, CONF_TARGET_TEMP, DEFAULT_NAME # Importera för migrering
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["climate"]
 
-
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Sätt upp Golvvärmekontroll-komponenten från YAML (används generellt inte för UI-konfig)."""
     hass.data.setdefault(DOMAIN, {})
-    _LOGGER.info("Golvvarmekontroll-komponenten (domän: %s) registreras.", DOMAIN) # G004
+    _LOGGER.info(f"Golvvarmekontroll-komponenten (domän: {DOMAIN}) registreras.")
     return True
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Sätt upp Golvvärmekontroll från en config entry."""
-    _LOGGER.info(
-        "Sätter upp Golvvarmekontroll-post '%s' (v%s, ID: %s, Options: %s)",
-        entry.title,
-        entry.version,
-        entry.entry_id,
-        entry.options,
-    ) # G004
+    _LOGGER.info(f"Sätter upp Golvvarmekontroll-post '{entry.title}' (v{entry.version}, ID: {entry.entry_id})")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    _LOGGER.info(
-        "Golvvarmekontroll-post '%s' har satts upp framgångsrikt.", entry.title
-    ) # G004
+    entry.async_on_unload(entry.add_update_listener(_options_update_listener))
+    _LOGGER.info(f"Golvvarmekontroll-post '{entry.title}' har satts upp framgångsrikt.")
     return True
 
+async def _options_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    _LOGGER.info(f"Global lyssnare: Alternativ uppdaterade för '{entry.title}'.")
+    _LOGGER.debug(f"Global lyssnare för '{entry.title}': Ingen omladdning utförs, förlitar sig på live-hantering i entiteten.")
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Ladda ur en config entry."""
-    _LOGGER.info(
-        "Laddar ur Golvvarmekontroll-post '%s' (ID: %s)", entry.title, entry.entry_id
-    ) # G004
+    _LOGGER.info(f"Laddar ur Golvvarmekontroll-post '{entry.title}' (ID: {entry.entry_id})")
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        _LOGGER.info(
-            "Golvvarmekontroll-post '%s' har laddats ur framgångsrikt.", entry.title
-        ) # G004
+        _LOGGER.info(f"Golvvarmekontroll-post '{entry.title}' har laddats ur framgångsrikt.")
     else:
-        _LOGGER.error(
-            "Misslyckades med att ladda ur plattformar för Golvvarmekontroll-post '%s'.",
-            entry.title,
-        ) # G004
+        _LOGGER.error(f"Misslyckades med att ladda ur plattformar för Golvvarmekontroll-post '{entry.title}'.")
     return unload_ok
 
-
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrera en gammal config entry till senaste versionen."""
-    _LOGGER.debug(
-        "Kontrollerar migrering för '%s' från v%s (data: %s, options: %s)",
-        config_entry.title,
-        config_entry.version,
-        config_entry.data,
-        config_entry.options,
-    ) # G004
-
+    _LOGGER.debug(f"Kontrollerar migrering för '{config_entry.title}' från v{config_entry.version}")
     if config_entry.version == 1:
-        _LOGGER.info(
-            "Migrerar config entry '%s' från v1 till v2-databasen.", config_entry.title
-        ) # G004
+        _LOGGER.info(f"Migrerar config entry '{config_entry.title}' från v1 till v2-databasen.")
         new_data = {**config_entry.data}
         new_options = {**config_entry.options}
         new_data.pop("thermostat_entity_id", None)
@@ -86,39 +56,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             new_data[CONF_NAME] = config_entry.title or DEFAULT_NAME
         if CONF_TARGET_TEMP not in new_data:
             new_data[CONF_TARGET_TEMP] = DEFAULT_TARGET_TEMP
-        if CONF_DEBUG_LOGGING not in new_options:
-            new_options[CONF_DEBUG_LOGGING] = DEFAULT_DEBUG_LOGGING
-
-        config_entry.version = 2 # Målet för denna migrering
-        hass.config_entries.async_update_entry(
-            config_entry, data=new_data, options=new_options
-        )
-        _LOGGER.info(
-            "Migrering av '%s' till v2-databasen slutförd.", config_entry.title
-        ) # G004
-        _LOGGER.debug("Migrerad config_entry: data=%s, options=%s", new_data, new_options) # G004
-        return True
-
-    if config_entry.version == 2 and CONF_DEBUG_LOGGING not in config_entry.options:
-        _LOGGER.info(
-            "Uppdaterar config entry '%s' (v%s) för att inkludera default för '%s'.",
-            config_entry.title,
-            config_entry.version,
-            CONF_DEBUG_LOGGING,
-        ) # G004
-        new_options_v2_update = {
-            **config_entry.options,
-            CONF_DEBUG_LOGGING: DEFAULT_DEBUG_LOGGING,
-        }
-        hass.config_entries.async_update_entry(
-            config_entry, options=new_options_v2_update
-        )
-        _LOGGER.info(
-            "'%s' tillagd med defaultvärde för '%s'.",
-            CONF_DEBUG_LOGGING,
-            config_entry.title,
-        ) # G004
-        _LOGGER.debug("Uppdaterad config_entry options: %s", new_options_v2_update) # G004
-        return True
-
+        config_entry.version = 2
+        hass.config_entries.async_update_entry(config_entry, data=new_data, options=new_options)
+        _LOGGER.info(f"Migrering av '{config_entry.title}' till v2-databasen slutförd.")
     return True
