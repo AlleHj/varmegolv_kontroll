@@ -41,24 +41,24 @@ async def async_setup_entry(
 
 class VarmegolvClimate(ClimateEntity, RestoreEntity):
     _attr_has_entity_name = True
-    _attr_name = None
+    _attr_name = None 
 
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE |
-        ClimateEntityFeature.TURN_ON |
+        ClimateEntityFeature.TARGET_TEMPERATURE | 
+        ClimateEntityFeature.TURN_ON | 
         ClimateEntityFeature.TURN_OFF
     )
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, config_data: dict) -> None:
         self.hass = hass
         self._config_entry = config_entry
-        self._config_data = config_data
+        self._config_data = config_data 
         self._attr_name = None
         self._temp_sensor_entity_id = self._config_data.get(CONF_TEMP_SENSOR_ENTITY)
         self._heater_switch_entity_id = self._config_data.get(CONF_HEATER_SWITCH_ENTITY)
         self._hysteresis = self._config_data.get(CONF_HYSTERESIS, DEFAULT_HYSTERESIS)
-        self._attr_unique_id = f"{config_entry.entry_id}_thermostat"
+        self._attr_unique_id = f"{config_entry.entry_id}_thermostat" 
         self._attr_temperature_unit = hass.config.units.temperature_unit
         self._current_temp: Optional[float] = None
         self._target_temp: float = self._config_data.get(CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP)
@@ -89,7 +89,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         await super().async_added_to_hass()
         _LOGGER.debug(f"[{self._config_entry.title}] async_added_to_hass: Startar.")
         initial_target_temp_from_config = self._config_data.get(CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP)
-        initial_master_enabled_from_config = self._config_data.get(CONF_MASTER_ENABLED, True)
+        initial_master_enabled_from_config = self._config_data.get(CONF_MASTER_ENABLED, True) 
         last_state = await self.async_get_last_state()
         if last_state:
             _LOGGER.debug(f"[{self._config_entry.title}] Återställer från last_state: {last_state.attributes}")
@@ -100,10 +100,10 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 except ValueError:
                     _LOGGER.warning(f"[{self._config_entry.title}] Ogiltigt HVAC-läge '{restored_hvac_mode_str}' återställt, använder från config.")
                     self._attr_hvac_mode = HVACMode.HEAT if initial_master_enabled_from_config else HVACMode.OFF
-            else:
+            else: 
                 _LOGGER.debug(f"[{self._config_entry.title}] Inget HVAC-läge i last_state, använder från config.")
                 self._attr_hvac_mode = HVACMode.HEAT if initial_master_enabled_from_config else HVACMode.OFF
-        else:
+        else: 
             _LOGGER.debug(f"[{self._config_entry.title}] Inget last_state, använder initiala konfigurationsvärden.")
             self._target_temp = initial_target_temp_from_config
             self._attr_hvac_mode = HVACMode.HEAT if initial_master_enabled_from_config else HVACMode.OFF
@@ -124,13 +124,13 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             temp_sensor_state = self.hass.states.get(self._temp_sensor_entity_id)
             if temp_sensor_state:
                 # KORRIGERING HÄR: _update_from_temp_sensor_state är synkron
-                self._update_from_temp_sensor_state(temp_sensor_state)
+                self._update_from_temp_sensor_state(temp_sensor_state) 
         await self._control_heating()
         self.async_schedule_update_ha_state(True)
 
     def _setup_sensor_listeners(self):
         _LOGGER.debug(f"[{self._config_entry.title}] Sätter upp sensorlyssnare.")
-        self._remove_listeners()
+        self._remove_listeners() 
         if self._temp_sensor_entity_id: self._listeners.append(async_track_state_change_event(self.hass, self._temp_sensor_entity_id, self._async_temp_sensor_changed))
         if self._heater_switch_entity_id: self._listeners.append(async_track_state_change_event(self.hass, self._heater_switch_entity_id, self._async_heater_switch_changed))
 
@@ -185,7 +185,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         new_state: Optional[State] = event.data.get("new_state")
         _LOGGER.debug(f"[{self._config_entry.title}] Tempsensor '{self._temp_sensor_entity_id}' ändrades: {new_state.state if new_state else 'None'}")
         # KORRIGERING HÄR: _update_from_temp_sensor_state är synkron
-        if self._update_from_temp_sensor_state(new_state):
+        if self._update_from_temp_sensor_state(new_state): 
             await self._control_heating()
             self.async_schedule_update_ha_state()
 
@@ -247,7 +247,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             if self._current_temp >= upper_bound:
                 _LOGGER.info(f"[{self._config_entry.title}] Temp {self._current_temp}°C >= {upper_bound}°C. Önskar stänga AV.")
                 desired_action_turn_on = False
-        else:
+        else: 
             if self._current_temp <= lower_bound:
                 _LOGGER.info(f"[{self._config_entry.title}] Temp {self._current_temp}°C <= {lower_bound}°C. Önskar slå PÅ.")
                 desired_action_turn_on = True
@@ -259,7 +259,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             await self._set_heater_state(False)
         else:
             _LOGGER.debug(f"[{self._config_entry.title}] Värmarens nuvarande tillstånd matchar önskat tillstånd. Ingen åtgärd.")
-
+        
     async def _set_heater_state(self, turn_on: bool) -> None:
         if not self._heater_switch_entity_id:
             _LOGGER.warning(f"[{self._config_entry.title}] Ingen värmeswitch konfigurerad, kan inte ändra status.")
@@ -270,8 +270,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         try:
             await self.hass.async_add_executor_job(
                 functools.partial(
-                    self.hass.services.call, "switch", service_to_call,
-                    {"entity_id": entity_id_to_call}, True, None
+                    self.hass.services.call, "switch", service_to_call, 
+                    {"entity_id": entity_id_to_call}, True, None 
                 )
             )
             _LOGGER.info(f"[{self._config_entry.title}] ANROP (via executor) TILL switch.{service_to_call} för '{entity_id_to_call}' HAR SLUTFÖRTS.")
@@ -308,7 +308,7 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
             return
         _LOGGER.info(f"[{self._config_entry.title}] Sätter HVAC-läge internt till {hvac_mode}.")
         self._attr_hvac_mode = hvac_mode
-        new_options = {**self._config_entry.options}
+        new_options = {**self._config_entry.options} 
         new_options[CONF_MASTER_ENABLED] = (hvac_mode == HVACMode.HEAT)
         _LOGGER.debug(f"[{self._config_entry.title}] Uppdaterar config_entry options med CONF_MASTER_ENABLED={new_options[CONF_MASTER_ENABLED]}")
         self.hass.config_entries.async_update_entry(self._config_entry, options=new_options)

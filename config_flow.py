@@ -43,7 +43,7 @@ class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 unique_id_candidate = f"{DOMAIN}_{slugify(name)}"
                 await self.async_set_unique_id(unique_id_candidate)
-                self._abort_if_unique_id_configured()
+                self._abort_if_unique_id_configured() 
                 return self.async_create_entry(title=name, data=user_input)
 
         data_schema = vol.Schema({
@@ -86,7 +86,7 @@ class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_MASTER_ENABLED: user_input.get(CONF_MASTER_ENABLED),
             }
             return self.async_create_entry(title="", data=options_data_to_save)
-
+        
         options_schema = vol.Schema({
             vol.Required(CONF_TEMP_SENSOR_ENTITY, default=self.current_data.get(CONF_TEMP_SENSOR_ENTITY)): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=["sensor", "input_number"]),

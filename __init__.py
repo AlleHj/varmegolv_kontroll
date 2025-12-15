@@ -11,7 +11,7 @@ import logging
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.typing import ConfigType 
 
 from .const import DOMAIN, CONF_NAME, DEFAULT_TARGET_TEMP, CONF_TARGET_TEMP, DEFAULT_NAME # Importera för migrering
 
@@ -56,7 +56,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             new_data[CONF_NAME] = config_entry.title or DEFAULT_NAME
         if CONF_TARGET_TEMP not in new_data:
             new_data[CONF_TARGET_TEMP] = DEFAULT_TARGET_TEMP
-        config_entry.version = 2
+        config_entry.version = 2 
         hass.config_entries.async_update_entry(config_entry, data=new_data, options=new_options)
         _LOGGER.info(f"Migrering av '{config_entry.title}' till v2-databasen slutförd.")
     return True

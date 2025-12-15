@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Konfigurera Ny Golvvärmetermostat",
-        "description": "Konfigurera den nya Golvvärmetermostaten. Detta kommer att skapa en ny termostatentitet. Ange ett unikt namn.\n\n{help_url_text}",
+        "description": "Konfigurera den nya Golvvärmetermostaten. Detta kommer att skapa en ny termostatentitet. Ange ett unikt namn.",
         "data": {
           "name": "Termostatens Namn (Unikt)",
           "temp_sensor_entity_id": "Nuvarande Temperatursensorentitet",
@@ -29,16 +29,12 @@
     "step": {
       "init": {
         "title": "{component_name} Alternativ",
-        "description": "Justera inställningarna för denna Golvvärmetermostat.\n\n{help_url_text}",
+        "description": "Justera inställningarna för denna Golvvärmetermostat.",
         "data": {
           "temp_sensor_entity_id": "Nuvarande Temperatursensorentitet",
           "heater_switch_entity_id": "Värmare På/Av Styrentitet (switch)",
           "hysteresis": "Hysteres (grader)",
-          "master_enabled": "Aktivera Termostaten (Huvud På/Av)",
-          "debug_logging": "Aktivera Debug-loggning"
-        },
-        "data_description": {
-            "debug_logging": "Om ibockad kommer detaljerade debug-meddelanden att skrivas till Home Assistant-loggen för denna termostatinstans. Detta kan vara hjälpsamt vid felsökning."
+          "master_enabled": "Aktivera Termostaten (Huvud På/Av)"
         }
       }
     },
@@ -49,7 +45,7 @@
   "entity": {
     "climate": {
       "varmegolv_kontroll_default": {
-        "name": "Golvv\u00e4rmetermostat"
+        "name": "Golvv\u00e4rmetermostat" 
       }
     }
   }
