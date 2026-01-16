@@ -1,6 +1,6 @@
 {
   "domain": "varmegolv_kontroll",
-  "name": "Golvv\u00e4rmekontroll",
+  "name": "Golvvärmekontroll",
   "codeowners": [
     "@AlleHj"
   ],
@@ -15,5 +15,5 @@
     "custom_components.varmegolv_kontroll"
   ],
   "requirements": [],
-  "version": "2.2.2"
+  "version": "2.2.3"
 }
