@@ -2,10 +2,12 @@
 Config flow för Golvvärmekontroll.
 
 Versionshistorik:
-(Tidigare versioner...)
+(Tidigare versioner)
 2.1.0 - 2025-05-23 - Gjorde namnfältet obligatoriskt för att säkerställa unika instanser.
                      Använder det angivna namnet för att generera ett unikt ID för config entry.
                      Titeln på config entry sätts till det angivna namnet.
+2.2.3 - 2026-01-17 - Fix: Tog bort manuell tilldelning av self.config_entry i OptionsFlow
+                     för att åtgärda AttributeError (read-only property).
 """
 import logging
 import voluptuous as vol
@@ -13,7 +15,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
-#from homeassistant.util.slugify import slugify
 from homeassistant.util import slugify
 
 from .const import (
@@ -43,7 +44,7 @@ class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 unique_id_candidate = f"{DOMAIN}_{slugify(name)}"
                 await self.async_set_unique_id(unique_id_candidate)
-                self._abort_if_unique_id_configured() 
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=name, data=user_input)
 
         data_schema = vol.Schema({
@@ -73,7 +74,9 @@ class VarmegolvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry):
-        self.config_entry = config_entry
+        """Initiera options flow."""
+        # OBS: Vi sätter inte self.config_entry = config_entry här längre.
+        # Det är en read-only property i basklassen OptionsFlow.
         self.current_data = {**config_entry.data, **config_entry.options}
 
     async def async_step_init(self, user_input=None):
@@ -86,7 +89,10 @@ class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_MASTER_ENABLED: user_input.get(CONF_MASTER_ENABLED),
             }
             return self.async_create_entry(title="", data=options_data_to_save)
-        
+
+        # Använd self.config_entry.title om tillgängligt, annars fallback
+        title = self.config_entry.title if hasattr(self, "config_entry") else "Golvvärmekontroll"
+
         options_schema = vol.Schema({
             vol.Required(CONF_TEMP_SENSOR_ENTITY, default=self.current_data.get(CONF_TEMP_SENSOR_ENTITY)): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=["sensor", "input_number"]),
@@ -102,5 +108,5 @@ class VarmegolvOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=options_schema,
             errors=errors,
-            description_placeholders={"component_name": self.config_entry.title},
+            description_placeholders={"component_name": title},
         )
