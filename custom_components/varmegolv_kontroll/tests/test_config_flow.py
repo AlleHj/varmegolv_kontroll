@@ -1,3 +1,4 @@
+# Version: 2026-05-15 - Verifierad fil för Home Assistant 2026.x kompabilitet.
 """Testar config flow och options flow för Golvvärmekontroll."""
 from unittest.mock import patch
 import pytest
