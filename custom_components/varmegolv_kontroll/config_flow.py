@@ -10,24 +10,24 @@ Versionshistorik:
                      för att åtgärda AttributeError (read-only property).
 """
 import logging
-import voluptuous as vol
 
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
 from .const import (
-    DOMAIN,
-    CONF_TEMP_SENSOR_ENTITY,
     CONF_HEATER_SWITCH_ENTITY,
     CONF_HYSTERESIS,
     CONF_MASTER_ENABLED,
-    CONF_TARGET_TEMP,
     CONF_NAME,
+    CONF_TARGET_TEMP,
+    CONF_TEMP_SENSOR_ENTITY,
     DEFAULT_HYSTERESIS,
     DEFAULT_NAME,
     DEFAULT_TARGET_TEMP,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)

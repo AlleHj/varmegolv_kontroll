@@ -1,21 +1,20 @@
 # Version: 2026-05-15 - Verifierad fil för Home Assistant 2026.x kompabilitet.
 """Testar config flow och options flow för Golvvärmekontroll."""
 from unittest.mock import patch
+
 import pytest
 import voluptuous as vol
-
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.const import CONF_NAME
-
 from custom_components.varmegolv_kontroll.const import (
-    DOMAIN,
-    CONF_TEMP_SENSOR_ENTITY,
     CONF_HEATER_SWITCH_ENTITY,
     CONF_HYSTERESIS,
-    CONF_TARGET_TEMP,
     CONF_MASTER_ENABLED,
+    CONF_TARGET_TEMP,
+    CONF_TEMP_SENSOR_ENTITY,
+    DOMAIN,
 )
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 # Testdata
 TEST_DATA = {

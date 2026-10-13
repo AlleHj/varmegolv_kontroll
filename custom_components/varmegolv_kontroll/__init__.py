@@ -9,11 +9,17 @@ Versionshistorik:
 """
 import logging
 
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.typing import ConfigType 
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, CONF_NAME, DEFAULT_TARGET_TEMP, CONF_TARGET_TEMP, DEFAULT_NAME # Importera för migrering
+from .const import (  # Importera för migrering
+    CONF_NAME,
+    CONF_TARGET_TEMP,
+    DEFAULT_NAME,
+    DEFAULT_TARGET_TEMP,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
