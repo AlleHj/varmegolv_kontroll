@@ -1,3 +1,4 @@
+# Version: 2026-10-13 - Rättat RUF012 (_attr_hvac_modes i __init__) och G201/TRY401 i exception-loggning
 """
 Climate-plattform för Golvvärmekontroll.
 
@@ -7,26 +8,37 @@ Versionshistorik:
 2.2.2 - 2025-05-24 - Fix: Korrigerat TypeError i _perform_initial_updates_and_control
                      genom att ta bort felaktigt 'await' på synkron funktion.
 """
-import logging
 import functools
-from typing import Any, Optional
+import logging
+from typing import Any
 
 from homeassistant.components.climate import (
-    ClimateEntity, ClimateEntityFeature, HVACMode, HVACAction,
+    ClimateEntity,
+    ClimateEntityFeature,
+    HVACAction,
+    HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    ATTR_TEMPERATURE, STATE_UNAVAILABLE, STATE_UNKNOWN,
+    ATTR_TEMPERATURE,
     EVENT_HOMEASSISTANT_START,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
 )
-from homeassistant.core import HomeAssistant, callback, Event, State
+from homeassistant.core import Event, HomeAssistant, State, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
-    DOMAIN, CONF_TEMP_SENSOR_ENTITY, CONF_HEATER_SWITCH_ENTITY, CONF_HYSTERESIS,
-    CONF_MASTER_ENABLED, CONF_TARGET_TEMP, DEFAULT_HYSTERESIS, DEFAULT_TARGET_TEMP,
+    CONF_HEATER_SWITCH_ENTITY,
+    CONF_HYSTERESIS,
+    CONF_MASTER_ENABLED,
+    CONF_TARGET_TEMP,
+    CONF_TEMP_SENSOR_ENTITY,
+    DEFAULT_HYSTERESIS,
+    DEFAULT_TARGET_TEMP,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,7 +55,6 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
     _attr_has_entity_name = True
     _attr_name = None
 
-    _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE |
         ClimateEntityFeature.TURN_ON |
@@ -55,16 +66,17 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         self._config_entry = config_entry
         self._config_data = config_data
         self._attr_name = None
+        self._attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
         self._temp_sensor_entity_id = self._config_data.get(CONF_TEMP_SENSOR_ENTITY)
         self._heater_switch_entity_id = self._config_data.get(CONF_HEATER_SWITCH_ENTITY)
         self._hysteresis = self._config_data.get(CONF_HYSTERESIS, DEFAULT_HYSTERESIS)
         self._attr_unique_id = f"{config_entry.entry_id}_thermostat"
         self._attr_temperature_unit = hass.config.units.temperature_unit
-        self._current_temp: Optional[float] = None
+        self._current_temp: float | None = None
         self._target_temp: float = self._config_data.get(CONF_TARGET_TEMP, DEFAULT_TARGET_TEMP)
         initial_master_enabled = self._config_data.get(CONF_MASTER_ENABLED, True)
         self._attr_hvac_mode: HVACMode = HVACMode.HEAT if initial_master_enabled else HVACMode.OFF
-        self._attr_hvac_action: Optional[HVACAction] = None
+        self._attr_hvac_action: HVACAction | None = None
         self._listeners = []
         _LOGGER.debug(f"[{self._config_entry.title}] __init__: TargetTemp={self._target_temp}, HVACMode={self._attr_hvac_mode}")
 
@@ -72,13 +84,13 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
     def device_info(self):
         return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": self._config_entry.title, "manufacturer": "Anpassad Komponent AB", "model": "Golvvärmetermostat v2.2", "sw_version": self._config_entry.version}
     @property
-    def current_temperature(self) -> Optional[float]: return self._current_temp
+    def current_temperature(self) -> float | None: return self._current_temp
     @property
-    def target_temperature(self) -> Optional[float]: return self._target_temp
+    def target_temperature(self) -> float | None: return self._target_temp
     @property
     def hvac_mode(self) -> HVACMode: return self._attr_hvac_mode
     @property
-    def hvac_action(self) -> Optional[HVACAction]:
+    def hvac_action(self) -> HVACAction | None:
         if self._attr_hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
         if self._heater_switch_entity_id:
@@ -189,14 +201,14 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
 
     @callback
     async def _async_temp_sensor_changed(self, event: Event) -> None:
-        new_state: Optional[State] = event.data.get("new_state")
+        new_state: State | None = event.data.get("new_state")
         _LOGGER.debug(f"[{self._config_entry.title}] Tempsensor '{self._temp_sensor_entity_id}' ändrades: {new_state.state if new_state else 'None'}")
         # KORRIGERING HÄR: _update_from_temp_sensor_state är synkron
         if self._update_from_temp_sensor_state(new_state):
             await self._control_heating()
             self.async_schedule_update_ha_state()
 
-    def _update_from_temp_sensor_state(self, state: Optional[State]) -> bool: # Denna är synkron
+    def _update_from_temp_sensor_state(self, state: State | None) -> bool: # Denna är synkron
         changed = False
         if state and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             try:
@@ -218,14 +230,14 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
 
     @callback
     def _async_heater_switch_changed(self, event: Event) -> None:
-        new_state_obj: Optional[State] = event.data.get("new_state")
+        new_state_obj: State | None = event.data.get("new_state")
         switch_state = new_state_obj.state if new_state_obj else "okänt (ingen state)"
         _LOGGER.info(f"[{self._config_entry.title}] Värmeswitch '{self._heater_switch_entity_id}' ändrades till '{switch_state}'. Förbereder schemaläggning av HA-statusuppdatering.")
         try:
             self.async_schedule_update_ha_state()
             _LOGGER.info(f"[{self._config_entry.title}] async_schedule_update_ha_state ANROPAD från _async_heater_switch_changed.")
-        except Exception as e:
-            _LOGGER.error(f"[{self._config_entry.title}] FEL vid anrop av async_schedule_update_ha_state i _async_heater_switch_changed: {e}", exc_info=True)
+        except Exception:
+            _LOGGER.exception(f"[{self._config_entry.title}] FEL vid anrop av async_schedule_update_ha_state i _async_heater_switch_changed")
 
     async def _control_heating(self) -> None:
         if self._attr_hvac_mode != HVACMode.HEAT:
@@ -283,8 +295,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
                 )
             )
             _LOGGER.info(f"[{self._config_entry.title}] ANROP (via executor) TILL switch.{service_to_call} för '{entity_id_to_call}' HAR SLUTFÖRTS.")
-        except Exception as e:
-            _LOGGER.error(f"[{self._config_entry.title}] FEL vid anrop (via executor) till switch.{service_to_call} för '{entity_id_to_call}': {e}", exc_info=True)
+        except Exception:
+            _LOGGER.exception(f"[{self._config_entry.title}] FEL vid anrop (via executor) till switch.{service_to_call} för '{entity_id_to_call}'")
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temperature = kwargs.get(ATTR_TEMPERATURE)
@@ -303,8 +315,8 @@ class VarmegolvClimate(ClimateEntity, RestoreEntity):
         try:
             self.async_write_ha_state()
             _LOGGER.info(f"[{self._config_entry.title}] async_set_temperature: async_write_ha_state ANROPAD för måltemp {self._target_temp}°C.")
-        except Exception as e:
-            _LOGGER.error(f"[{self._config_entry.title}] FEL vid anrop av async_write_ha_state i async_set_temperature: {e}", exc_info=True)
+        except Exception:
+            _LOGGER.exception(f"[{self._config_entry.title}] FEL vid anrop av async_write_ha_state i async_set_temperature")
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         _LOGGER.debug(f"[{self._config_entry.title}] async_set_hvac_mode anropad med: {hvac_mode}")
