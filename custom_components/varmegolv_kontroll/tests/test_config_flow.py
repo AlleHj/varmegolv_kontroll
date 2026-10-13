@@ -1,9 +1,13 @@
-# Version: 2026-05-15 - Verifierad fil för Home Assistant 2026.x kompabilitet.
+# Version: 2026-10-13 - Korrigerat importsortering enligt Ruff I001
 """Testar config flow och options flow för Golvvärmekontroll."""
 from unittest.mock import patch
 
 import pytest
 import voluptuous as vol
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
 from custom_components.varmegolv_kontroll.const import (
     CONF_HEATER_SWITCH_ENTITY,
     CONF_HYSTERESIS,
@@ -12,9 +16,6 @@ from custom_components.varmegolv_kontroll.const import (
     CONF_TEMP_SENSOR_ENTITY,
     DOMAIN,
 )
-from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
 
 # Testdata
 TEST_DATA = {
